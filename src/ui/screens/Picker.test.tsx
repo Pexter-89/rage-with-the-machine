@@ -1,7 +1,7 @@
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { addGym, saveGymExercise } from '../../db/gymRepo';
-import { resetDb } from '../../db/db';
+import { db, resetDb } from '../../db/db';
 import { startSession } from '../../db/sessionRepo';
 import { BUILT_IN_CATALOG } from '../../domain/catalog';
 import type { CatalogExercise } from '../../domain/types';
@@ -56,4 +56,18 @@ test('Back returns to the session', async () => {
   render(<Picker sessionId={s.id} />);
   await userEvent.click(await screen.findByRole('button', { name: '‹ Back' }));
   expect(location.hash).toBe(`#/session/${s.id}`);
+});
+
+test('an ended session redirects home', async () => {
+  const { s } = await seed();
+  await db.sessions.update(s.id, { endedAt: Date.now() });
+  location.hash = `#/session/${s.id}/pick`;
+  render(<Picker sessionId={s.id} />);
+  await vi.waitFor(() => expect(location.hash).toBe('#/'));
+});
+
+test('a missing session redirects home', async () => {
+  location.hash = '#/session/nope/pick';
+  render(<Picker sessionId="nope" />);
+  await vi.waitFor(() => expect(location.hash).toBe('#/'));
 });

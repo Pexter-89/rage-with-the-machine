@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../../db/db';
 import { getCatalog } from '../../db/catalogRepo';
@@ -8,11 +9,15 @@ import { navigate } from '../router';
 export default function Picker({ sessionId }: { sessionId: string }) {
   const data = useLiveQuery(async () => {
     const session = await db.sessions.get(sessionId);
-    if (!session) return null;
+    if (!session || session.endedAt !== null) return null;
     const gym = await db.gyms.get(session.gymId);
     const items = await availableExercises(session.gymId, await getCatalog());
     return { gymName: gym?.name ?? '', items };
   }, [sessionId]);
+
+  useEffect(() => {
+    if (data === null) navigate({ name: 'home' });
+  }, [data]);
 
   if (!data) return <main className="screen picker" />;
 
