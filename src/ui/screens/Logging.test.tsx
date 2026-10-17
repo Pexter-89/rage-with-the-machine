@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { addGym, saveGymExercise } from '../../db/gymRepo';
 import { db, resetDb } from '../../db/db';
@@ -168,4 +168,46 @@ test('Back returns to the session', async () => {
   render(<Logging sessionId={s.id} itemKey={ge.id} />);
   await userEvent.click(await screen.findByRole('button', { name: '‹ Back to session' }));
   expect(location.hash).toBe(`#/session/${s.id}`);
+});
+
+function scrollTo(scroller: Element, row: number) {
+  Object.defineProperty(scroller, 'scrollTop', { get: () => row * 44, set: () => {}, configurable: true });
+  fireEvent.scroll(scroller);
+}
+
+test('Complete set commits the weight on screen while the wheel is still settling', async () => {
+  const { s, ge } = await seed();
+  const { container } = render(<Logging sessionId={s.id} itemKey={ge.id} />);
+  await userEvent.click(await screen.findByRole('button', { name: 'Complete set' }));
+  await screen.findByRole('button', { name: '1 60 kg × 10' });
+  scrollTo(container.querySelectorAll('.wheel-scroll')[0], 2);
+  await userEvent.click(screen.getByRole('button', { name: 'Complete set' }));
+  await vi.waitFor(async () => expect(await db.sets.count()).toBe(2));
+  const weights = (await db.sets.toArray()).sort((a, b) => a.order - b.order).map((x) => x.weight);
+  expect(weights).toEqual([60, 64]);
+});
+
+test('Save commits the wheel value on screen while settling', async () => {
+  const { s, ge } = await seed();
+  render(<Logging sessionId={s.id} itemKey={ge.id} />);
+  await userEvent.click(await screen.findByRole('button', { name: 'Complete set' }));
+  await userEvent.click(await screen.findByRole('button', { name: '1 60 kg × 10' }));
+  const dialog = await screen.findByRole('dialog');
+  scrollTo(dialog.querySelectorAll('.wheel-scroll')[0], 3);
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Save' }));
+  await vi.waitFor(async () => expect((await db.sets.toArray())[0].weight).toBe(66));
+});
+
+test('a typed off-wheel weight is kept when the screen is reopened', async () => {
+  const { s, ge } = await seed();
+  const first = render(<Logging sessionId={s.id} itemKey={ge.id} />);
+  await userEvent.click(await screen.findByRole('button', { name: 'KG 60' }));
+  const input = screen.getByRole('textbox');
+  await userEvent.clear(input);
+  await userEvent.type(input, '63{Enter}');
+  await userEvent.click(screen.getByRole('button', { name: 'Complete set' }));
+  await screen.findByRole('button', { name: '1 63 kg × 10' });
+  first.unmount();
+  render(<Logging sessionId={s.id} itemKey={ge.id} />);
+  expect(await screen.findByRole('button', { name: 'KG 63' })).toBeInTheDocument();
 });

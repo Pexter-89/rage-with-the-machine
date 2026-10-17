@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../../db/db';
 import { getCatalog } from '../../db/catalogRepo';
@@ -11,6 +11,7 @@ import { formatSummary, formatWeight, summarizeSets } from '../../domain/metrics
 import type { PickerItem, SetEntry } from '../../domain/types';
 import Sheet from '../components/Sheet';
 import Wheel from '../components/Wheel';
+import type { WheelHandle } from '../components/Wheel';
 import { navigate } from '../router';
 
 const REPS = Array.from({ length: 50 }, (_, i) => i + 1);
@@ -40,10 +41,20 @@ interface PairProps {
   onChange(row: Row): void;
 }
 
-function WheelPair({ item, row, onChange }: PairProps) {
+interface PairHandle {
+  flush(): Row;
+}
+
+const WheelPair = forwardRef<PairHandle, PairProps>(function WheelPair({ item, row, onChange }, ref) {
+  const w = useRef<WheelHandle>(null);
+  const r = useRef<WheelHandle>(null);
+  useImperativeHandle(ref, () => ({
+    flush: () => ({ weight: w.current?.flush() ?? row.weight, reps: r.current?.flush() ?? row.reps }),
+  }));
   return (
     <>
       <Wheel
+        ref={w}
         label={weightLabel(item)}
         values={wheelValues(item.loading)}
         value={row.weight}
@@ -52,6 +63,7 @@ function WheelPair({ item, row, onChange }: PairProps) {
         suffix={isLevel(item) ? 'L' : undefined}
       />
       <Wheel
+        ref={r}
         label={item.unilateral ? 'REPS / SIDE' : 'REPS'}
         values={REPS}
         value={row.reps}
@@ -60,20 +72,21 @@ function WheelPair({ item, row, onChange }: PairProps) {
       />
     </>
   );
-}
+});
 
 function EditSheet({ item, set, onClose }: { item: PickerItem; set: SetEntry; onClose(): void }) {
   const [row, setRow] = useState<Row>({ weight: set.weight, reps: set.reps });
+  const pair = useRef<PairHandle>(null);
   return (
     <>
       <div className="input-row">
-        <WheelPair item={item} row={row} onChange={setRow} />
+        <WheelPair ref={pair} item={item} row={row} onChange={setRow} />
       </div>
       <div className="nav-row">
         <button
           className="btn btn-primary"
           onClick={async () => {
-            await updateSet(set.id, row, Date.now());
+            await updateSet(set.id, pair.current?.flush() ?? row, Date.now());
             onClose();
           }}
         >
@@ -109,6 +122,7 @@ export default function Logging({ sessionId, itemKey }: { sessionId: string; ite
   const [row, setRow] = useState<Row | null>(null);
   const [busy, setBusy] = useState(false);
   const inFlight = useRef(false);
+  const pair = useRef<PairHandle>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -124,7 +138,11 @@ export default function Logging({ sessionId, itemKey }: { sessionId: string; ite
     const p = prefill(sets, last);
     setRow(
       p
-        ? { weight: item.loading.type === 'stack' ? snapToWheel(values, p.weight) : p.weight, reps: p.reps }
+        ? {
+            // Snap only when the prefill came from last time; current-session sets keep typed values.
+            weight: item.loading.type === 'stack' && sets.length === 0 ? snapToWheel(values, p.weight) : p.weight,
+            reps: p.reps,
+          }
         : { weight: values[0] ?? 0, reps: 10 },
     );
     return <main className="screen logging" />;
@@ -138,7 +156,8 @@ export default function Logging({ sessionId, itemKey }: { sessionId: string; ite
     inFlight.current = true;
     setBusy(true);
     try {
-      await addSet(sessionId, item, row.weight, row.reps, Date.now());
+      const v = pair.current?.flush() ?? row;
+      await addSet(sessionId, item, v.weight, v.reps, Date.now());
     } finally {
       inFlight.current = false;
       setBusy(false);
@@ -175,7 +194,7 @@ export default function Logging({ sessionId, itemKey }: { sessionId: string; ite
       </ol>
 
       <div className="input-row">
-        <WheelPair item={item} row={row} onChange={setRow} />
+        <WheelPair ref={pair} item={item} row={row} onChange={setRow} />
         <button className="btn btn-ok btn-complete" aria-label="Complete set" disabled={busy} onClick={complete}>
           ✓
         </button>

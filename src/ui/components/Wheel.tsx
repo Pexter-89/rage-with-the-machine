@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { formatWeight } from '../../domain/metrics';
 
 export const ITEM_HEIGHT = 44;
@@ -19,7 +19,12 @@ interface Props {
   suffix?: string;
 }
 
-export default function Wheel({ label, values, value, onChange, parse, suffix }: Props) {
+export interface WheelHandle {
+  /** Commits the value currently under the selector (even mid-scroll) and returns it. */
+  flush(): number;
+}
+
+export default forwardRef<WheelHandle, Props>(function Wheel({ label, values, value, onChange, parse, suffix }, ref) {
   const display = useMemo(
     () => (values.includes(value) ? values : [...values, value].sort((a, b) => a - b)),
     [values, value],
@@ -67,6 +72,22 @@ export default function Wheel({ label, values, value, onChange, parse, suffix }:
       clearTimeout(timer.current);
     };
   }, []);
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      flush() {
+        clearTimeout(timer.current);
+        const el = scroller.current;
+        const { display: d, value: v, onChange: change, editing: ed } = live.current;
+        if (!el || ed) return v;
+        const next = d[indexFromScroll(el.scrollTop, ITEM_HEIGHT, d.length)] ?? v;
+        if (next !== v) change(next);
+        return next;
+      },
+    }),
+    [],
+  );
 
   const hasScrollEnd = () => 'onscrollend' in window;
 
@@ -158,4 +179,4 @@ export default function Wheel({ label, values, value, onChange, parse, suffix }:
       </div>
     </div>
   );
-}
+});
