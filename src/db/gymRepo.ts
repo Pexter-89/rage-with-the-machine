@@ -1,6 +1,7 @@
 import { CATEGORIES } from '../domain/catalog';
+import type { ParseResult } from '../domain/importMachine';
 import type { CatalogExercise, Gym, GymExercise, PickerItem } from '../domain/types';
-import { getCatalog } from './catalogRepo';
+import { addCustomEntries, getCatalog } from './catalogRepo';
 import { db } from './db';
 
 export class GymHasSessionsError extends Error {
@@ -63,6 +64,20 @@ export async function saveGymExercise(ge: Omit<GymExercise, 'id'> & { id?: strin
   const saved: GymExercise = { ...ge, id: ge.id ?? crypto.randomUUID(), loading: structuredClone(ge.loading) };
   await db.gymExercises.put(saved);
   return saved;
+}
+
+/** Atomic: custom catalogue entries, then one visible GymExercise per machine; any failure adds nothing. */
+export async function importMachines(gymId: string, parsed: Extract<ParseResult, { ok: true }>): Promise<GymExercise[]> {
+  return db.transaction('rw', [db.customCatalog, db.gymExercises], async () => {
+    if (parsed.newExercises.length > 0) await addCustomEntries(parsed.newExercises);
+    const saved: GymExercise[] = [];
+    for (const m of parsed.machines) {
+      saved.push(
+        await saveGymExercise({ gymId, catalogId: m.catalogId, label: m.label, notes: m.notes, loading: m.loading, hidden: false }),
+      );
+    }
+    return saved;
+  });
 }
 
 export async function deleteGymExercise(id: string): Promise<void> {

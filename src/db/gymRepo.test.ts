@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, test } from 'vitest';
+import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { db, resetDb } from './db';
 import { getCatalog } from './catalogRepo';
 import {
@@ -7,6 +7,7 @@ import {
   availableExercises,
   deleteGym,
   deleteGymExercise,
+  importMachines,
   listGymMachines,
   listGyms,
   moveGym,
@@ -163,5 +164,58 @@ describe('gym exercises and picker', () => {
     const ge = await saveGymExercise({ gymId: g.id, catalogId: 'leg-press', label: '', notes: '', loading: plate, hidden: false });
     await deleteGymExercise(ge.id);
     expect(await listGymMachines(g.id)).toEqual([]);
+  });
+});
+
+describe('importMachines', () => {
+  const machine = (catalogId: string, label: string) => ({ catalogId, label, notes: 'n', loading: plate });
+  const custom = { id: 'hip-thing', name: 'Hip Thing', category: 'legs', kind: 'machine', builtIn: false } as const;
+
+  test('adds custom entry and gym exercises atomically', async () => {
+    const gym = await addGym('G');
+    const out = await importMachines(gym.id, {
+      ok: true,
+      newExercises: [custom],
+      machines: [machine('hip-thing', 'A'), machine('leg-press', 'B')],
+    });
+    expect(out).toHaveLength(2);
+    expect((await getCatalog()).some((e) => e.id === 'hip-thing')).toBe(true);
+    const mine = await db.gymExercises.where('gymId').equals(gym.id).toArray();
+    expect(mine.map((m) => m.label).sort()).toEqual(['A', 'B']);
+    expect(mine.every((m) => !m.hidden)).toBe(true);
+  });
+
+  test('failure adds nothing', async () => {
+    const gym = await addGym('G');
+    // the second custom entry collides with a built-in id, so addCustomEntries throws
+    await expect(
+      importMachines(gym.id, {
+        ok: true,
+        newExercises: [custom, { ...custom, id: 'leg-press' }],
+        machines: [machine('hip-thing', 'A')],
+      }),
+    ).rejects.toThrow();
+    expect(await db.customCatalog.count()).toBe(0);
+    expect(await db.gymExercises.count()).toBe(0);
+  });
+
+  test('failure while saving a gym exercise rolls back custom entries and earlier saves', async () => {
+    const gym = await addGym('G');
+    const realPut = db.gymExercises.put.bind(db.gymExercises);
+    let calls = 0;
+    const spy = vi.spyOn(db.gymExercises, 'put').mockImplementation(((...args: Parameters<typeof realPut>) => {
+      if (++calls === 2) return Promise.reject(new Error('boom'));
+      return realPut(...args);
+    }) as typeof realPut);
+    await expect(
+      importMachines(gym.id, {
+        ok: true,
+        newExercises: [custom],
+        machines: [machine('hip-thing', 'A'), machine('leg-press', 'B')],
+      }),
+    ).rejects.toThrow('boom');
+    spy.mockRestore();
+    expect(await db.customCatalog.count()).toBe(0);
+    expect(await db.gymExercises.count()).toBe(0);
   });
 });
