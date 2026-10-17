@@ -373,3 +373,69 @@ input {
   font-size: 0.85rem;
   overflow-wrap: anywhere;
 }
+
+/* ---- logging ---- */
+.logging {
+  height: 100dvh;
+}
+
+.last-time {
+  background: var(--surface);
+  border-radius: 12px;
+  padding: 10px 12px;
+  font-size: 0.9rem;
+}
+
+.done-sets {
+  flex: none;
+  max-height: 30dvh;
+  overflow-y: auto;
+  gap: 6px;
+}
+
+.done-set {
+  width: 100%;
+}
+
+.input-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.input-row .wheel {
+  flex: 1;
+}
+
+.btn-complete {
+  flex: none;
+  width: 72px;
+  height: 132px;
+  font-size: 2rem;
+}
+
+/* ---- sheet ---- */
+.sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  display: flex;
+  align-items: flex-end;
+  background: rgba(0, 0, 0, 0.5);
+}
+
+.sheet {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+  padding: 16px 14px calc(16px + env(safe-area-inset-bottom));
+  background: var(--bg);
+  border-radius: 16px 16px 0 0;
+}
+
+.sheet-title {
+  margin: 0;
+  font-size: 1rem;
+  text-align: center;
+}

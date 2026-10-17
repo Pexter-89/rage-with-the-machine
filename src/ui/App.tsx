@@ -1,6 +1,7 @@
 import { navigate, useRoute } from './router';
 import Gyms from './screens/Gyms';
 import Home from './screens/Home';
+import Logging from './screens/Logging';
 import Picker from './screens/Picker';
 import Session from './screens/Session';
 
@@ -28,6 +29,8 @@ export default function App() {
       return <Session sessionId={route.sessionId} />;
     case 'pick':
       return <Picker sessionId={route.sessionId} />;
+    case 'log':
+      return <Logging key={`${route.sessionId}/${route.key}`} sessionId={route.sessionId} itemKey={route.key} />;
     default:
       return <Placeholder name={route.name} />;
   }
