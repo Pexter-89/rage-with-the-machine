@@ -32,9 +32,7 @@ function matchingBrace(text: string, start: number): number {
   return -1;
 }
 
-/** First JSON object with `format === 'rwtm-machine'` found anywhere in the text, or null. */
-export function extractMachineJson(text: string): unknown | null {
-  const src = text.replace(/[“”]/g, '"').replace(/[‘’]/g, "'");
+function scan(src: string): unknown | null {
   for (let i = src.indexOf('{'); i !== -1; i = src.indexOf('{', i + 1)) {
     const end = matchingBrace(src, i);
     if (end === -1) continue;
@@ -46,6 +44,16 @@ export function extractMachineJson(text: string): unknown | null {
     }
   }
   return null;
+}
+
+/**
+ * First JSON object with `format === 'rwtm-machine'` found anywhere in the text, or null.
+ * The raw text is scanned first; curly quotes are normalised only as a fallback, so valid files keep them verbatim.
+ */
+export function extractMachineJson(text: string): unknown | null {
+  return (
+    scan(text) ?? scan(text.replace(/[“”]/g, '"').replace(/[‘’]/g, "'"))
+  );
 }
 
 type Rec = Record<string, unknown>;
@@ -115,13 +123,16 @@ function parseMachine(
   let newExercise: CatalogExercise | null = null;
   if (m.newExercise !== undefined && m.newExercise !== null) {
     newExercise = parseNewExercise(m.newExercise);
-    if (known.has(newExercise.id)) return fail(`newExercise id "${newExercise.id}" already exists in the catalogue`);
     if (m.exercise !== newExercise.id) return fail('exercise must equal newExercise id when newExercise is given');
-    const earlier = declared.get(newExercise.id);
-    if (earlier && JSON.stringify(earlier) !== JSON.stringify(newExercise)) {
-      return fail(`newExercise "${newExercise.id}" is defined differently elsewhere in the file`);
+    if (known.has(newExercise.id)) {
+      newExercise = null; // already in the catalogue: reuse it, the existing definition wins
+    } else {
+      const earlier = declared.get(newExercise.id);
+      if (earlier && JSON.stringify(earlier) !== JSON.stringify(newExercise)) {
+        return fail(`newExercise "${newExercise.id}" is defined differently elsewhere in the file`);
+      }
     }
-  } else if (!known.has(m.exercise)) {
+  } else if (!known.has(m.exercise) && !declared.has(m.exercise)) {
     return fail(`unknown exercise "${m.exercise}"`);
   }
 
@@ -139,6 +150,9 @@ function parseMachine(
 export function parseMachineFile(text: string, catalog: CatalogExercise[]): ParseResult {
   const root = extractMachineJson(text);
   if (!isRecord(root)) return { ok: false, error: 'No machine file found: expected JSON with "format": "rwtm-machine"' };
+  for (const k of Object.keys(root)) {
+    if (!['format', 'version', 'machines'].includes(k)) return { ok: false, error: `unknown field "${k}"` };
+  }
   if (root.version !== 1) return { ok: false, error: 'Unsupported file version (expected "version": 1)' };
   if (!Array.isArray(root.machines) || root.machines.length === 0) {
     return { ok: false, error: '"machines" must be a non-empty array' };

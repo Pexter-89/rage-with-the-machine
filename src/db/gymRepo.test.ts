@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { db, resetDb } from './db';
+import { parseMachineFile } from '../domain/importMachine';
 import { getCatalog } from './catalogRepo';
 import {
   GymHasSessionsError,
@@ -183,6 +184,29 @@ describe('importMachines', () => {
     const mine = await db.gymExercises.where('gymId').equals(gym.id).toArray();
     expect(mine.map((m) => m.label).sort()).toEqual(['A', 'B']);
     expect(mine.every((m) => !m.hidden)).toBe(true);
+  });
+
+  test('re-importing the same file at a second gym creates no duplicate catalogue entry', async () => {
+    const text = JSON.stringify({
+      format: 'rwtm-machine',
+      version: 1,
+      machines: [
+        {
+          exercise: 'hip-thing',
+          newExercise: { id: 'hip-thing', name: 'Hip Thing', category: 'legs', kind: 'machine' },
+          loading: { type: 'plate', base: 10, step: 5 },
+        },
+      ],
+    });
+    const g1 = await addGym('G1');
+    const g2 = await addGym('G2');
+    for (const g of [g1, g2]) {
+      const parsed = parseMachineFile(text, await getCatalog());
+      if (!parsed.ok) throw new Error(parsed.error);
+      await importMachines(g.id, parsed);
+    }
+    expect(await db.customCatalog.count()).toBe(1);
+    expect(await db.gymExercises.count()).toBe(2);
   });
 
   test('failure adds nothing', async () => {

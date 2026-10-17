@@ -27,6 +27,12 @@ describe('extractMachineJson', () => {
     const curly = valid.replace(/"([^"]*)"/g, '“$1”');
     expect(extractMachineJson(curly)).toMatchObject({ format: 'rwtm-machine' });
   });
+  test('curly quotes inside a straight-quoted file are kept verbatim', () => {
+    const text = valid.replace('Seat 5', 'Set pin to “3”, it’s fine');
+    expect(extractMachineJson(text)).toMatchObject({
+      machines: [{ notes: 'Set pin to “3”, it’s fine' }],
+    });
+  });
   test('returns null when no machine JSON', () => {
     expect(extractMachineJson('hello {"a":1} world')).toBeNull();
     expect(extractMachineJson('')).toBeNull();
@@ -66,8 +72,23 @@ describe('parseMachineFile', () => {
     expect(run({ ...base, id: 'Hip Thing' }, 'Hip Thing')).toMatch(/^Machine 1: newExercise id/);
     expect(run({ ...base, extra: 1 })).toBe('Machine 1: unknown newExercise field "extra"');
     expect(run({ ...base, name: '' })).toMatch(/^Machine 1: newExercise name/);
-    expect(run({ ...base, id: 'leg-press' }, 'leg-press')).toMatch(/already exists/);
     expect(run(base, 'leg-press')).toMatch(/^Machine 1: exercise must equal newExercise id/);
+  });
+  test('newExercise id already in the catalogue is reused, not re-added', () => {
+    const ne = { id: 'leg-press', name: 'Different Name', category: 'arms', kind: 'machine' };
+    const r = parseMachineFile(
+      file({ exercise: 'leg-press', newExercise: ne, loading: { type: 'plate', base: 0, step: 5 } }),
+      BUILT_IN_CATALOG,
+    );
+    expect(r).toMatchObject({ ok: true, newExercises: [], machines: [{ catalogId: 'leg-press' }] });
+  });
+  test('a later machine may reference an id declared by an earlier newExercise', () => {
+    const ne = { id: 'hip-thing', name: 'Hip Thing', category: 'legs', kind: 'machine' };
+    const first = { exercise: 'hip-thing', newExercise: ne, loading: { type: 'plate', base: 10, step: 5 } };
+    const second = { exercise: 'hip-thing', label: 'B', loading: { type: 'plate', base: 10, step: 5 } };
+    const r = parseMachineFile(file(first, { machines: [first, second] }), BUILT_IN_CATALOG);
+    expect(r.ok && r.newExercises).toHaveLength(1);
+    expect(r.ok && r.machines.map((x) => x.catalogId)).toEqual(['hip-thing', 'hip-thing']);
   });
   test('conflicting definitions of the same newExercise → error', () => {
     const ne = { id: 'hip-thing', name: 'Hip Thing', category: 'legs', kind: 'machine' };
@@ -129,6 +150,8 @@ describe('parseMachineFile', () => {
     expect(err(file(stack([5]), { machines: [] }))).toMatch(/machines/);
     expect(err(file(stack([5]), { machines: 'x' }))).toMatch(/machines/);
   });
+  test('unknown top-level field → error', () =>
+    expect(err(file(stack([5]), { foo: 1 }))).toBe('unknown field "foo"'));
   test('JSON null newExercise means none', () =>
     expect(parseMachineFile(file({ ...stack([5]), newExercise: null }), BUILT_IN_CATALOG).ok).toBe(true));
 });

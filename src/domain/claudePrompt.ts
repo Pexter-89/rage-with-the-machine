@@ -33,7 +33,7 @@ ${list}
 
 Rules:
 1. For each machine, pick the "exercise" id from the list above. Use the id exactly as written.
-2. Only if nothing in the list fits, set "exercise" to a new id and fill "newExercise" with { "id", "name", "category", "kind" }. The new id must match "exercise", be lowercase kebab-case (for example "seated-hip-abductor"), and "category" must be one of: ${categories}. "kind" must be "machine". Otherwise set "newExercise" to null.
+2. Only if nothing in the list fits, set "exercise" to a new id and fill "newExercise" with { "id", "name", "category", "kind" }. The new id must match "exercise", be lowercase kebab-case (for example "seated-hip-abductor"), and "category" must be one of: ${categories}. "kind" must be "machine". Otherwise set "newExercise" to null. If a suitable id is already in the list, use it and set newExercise to null; never redefine a listed id.
 3. "label" is a short description of this particular machine (brand and model, for example "Technogym Pure leg press"). "notes" holds setup details such as seat height or pin positions. Either may be an empty string.
 4. Selectorised (weight stack) machines use "loading": { "type": "stack", "weights": [...] }. List exactly the weight values printed on the stack, in ascending order.
 5. Plate-loaded machines use "loading": { "type": "plate", "base": <weight of the empty sled or carriage in kg>, "step": <smallest plate increment per load in kg, for example 2.5> }. Read the sled weight from the photo. The step must be at least 0.25.
