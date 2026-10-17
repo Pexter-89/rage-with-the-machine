@@ -213,6 +213,7 @@ input {
   background: var(--bg);
   color: var(--text);
   font: inherit;
+  font-size: 16px; /* iOS zooms into form fields under 16px */
 }
 
 .wheel {
@@ -483,6 +484,7 @@ textarea {
   background: var(--bg);
   color: var(--text);
   font: inherit;
+  font-size: 16px; /* iOS zooms into form fields under 16px */
 }
 
 .error {
@@ -512,7 +514,7 @@ textarea {
 .slicers select {
   min-width: 0;
   color: var(--text);
-  font-size: 0.9rem;
+  font-size: 16px;
 }
 
 .chips {

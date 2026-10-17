@@ -16,3 +16,18 @@ test('safe-area insets live inside the full-height screen box, not on body', () 
   expect(rule('.screen')).toMatch(/safe-area-inset-bottom/);
   expect(rule('.screen')).toMatch(/box-sizing:\s*border-box/);
 });
+
+test('form controls render at 16px or more so iOS does not zoom into them', () => {
+  // `font: inherit` would pick up small label sizes (.field is 0.85rem), so font-size must come after it.
+  expect(rule('input')).toMatch(/font:\s*inherit;[\s\S]*font-size:\s*16px/);
+  expect(rule('select,\\s*textarea')).toMatch(/font:\s*inherit;[\s\S]*font-size:\s*16px/);
+  let checked = 0;
+  for (const [, sel, body] of css.matchAll(/([^{}]+)\{([^}]*)\}/g)) {
+    if (!/\b(input|select|textarea)\b/.test(sel)) continue;
+    const m = /font-size:\s*([\d.]+)(px|rem)/.exec(body);
+    if (!m) continue;
+    checked++;
+    expect(m[2] === 'px' ? Number(m[1]) : Number(m[1]) * 16, sel.trim()).toBeGreaterThanOrEqual(16);
+  }
+  expect(checked).toBeGreaterThanOrEqual(3);
+});
