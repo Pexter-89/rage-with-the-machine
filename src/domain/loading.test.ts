@@ -20,3 +20,11 @@ test('parseWeightInput', () => {
 test('parseRepsInput', () => {
   expect(parseRepsInput('8')).toBe(8); expect(parseRepsInput('8.5')).toBeNull(); expect(parseRepsInput('0')).toBeNull();
 });
+test('non-positive steps do not hang and yield a single value', () => {
+  for (const step of [0, -2.5]) {
+    expect(wheelValues({ type: 'plate', base: 62, step })).toEqual([62]);
+    expect(wheelValues({ type: 'free', start: 20, step, max: 300 })).toEqual([20]);
+    expect(wheelValues({ type: 'free', start: 1, step: 1, max: 60, bigStepFrom: 10, bigStep: step })).toEqual([1]);
+    expect(wheelValues({ type: 'bodyweight', step, max: 100 })).toEqual([0]);
+  }
+});

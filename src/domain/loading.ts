@@ -6,8 +6,10 @@ function range(start: number, max: number, stepAt: (v: number) => number): numbe
   const out: number[] = [];
   let v = round2(start);
   while (v <= max + 1e-9) {
+    const step = stepAt(v);
+    if (!(step > 0)) return [round2(start)];
     out.push(v);
-    v = round2(v + stepAt(v));
+    v = round2(v + step);
   }
   return out;
 }
