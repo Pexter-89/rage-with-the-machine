@@ -1,12 +1,9 @@
 import { Component, type ReactNode } from 'react';
+import { oneLine } from './lib/errors';
 import { navigate, type Route } from './router';
 
 interface State {
   error: Error | null;
-}
-
-function firstLine(e: Error): string {
-  return e.message.split('\n')[0].trim() || e.name || 'Unknown error';
 }
 
 /** Top-level fallback, so a render throw or a storage error never leaves a blank screen. */
@@ -29,7 +26,7 @@ export default class ErrorBoundary extends Component<{ children: ReactNode }, St
       <main className="screen">
         <h1 className="title">Something went wrong</h1>
         <p className="error" role="alert">
-          {firstLine(error)}
+          {oneLine(error)}
         </p>
         <p className="hint">Go Home to carry on, or open Settings to export or import a backup.</p>
         <div className="nav-row">

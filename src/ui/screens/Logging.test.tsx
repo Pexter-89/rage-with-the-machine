@@ -2,12 +2,32 @@ import { fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { addGym, saveGymExercise } from '../../db/gymRepo';
 import { db, resetDb } from '../../db/db';
-import { startSession } from '../../db/sessionRepo';
+import { SessionEndedError, startSession } from '../../db/sessionRepo';
 import { formatDate } from '../../domain/dates';
 import type { Loading } from '../../domain/types';
 import Logging from './Logging';
 
+// fail: the next repo write (addSet / updateSet / deleteSet) rejects with this error instead of running.
+const mocks = vi.hoisted(() => ({ fail: null as null | (() => Error) }));
+vi.mock('../../db/sessionRepo', async (orig) => {
+  const real = await orig<typeof import('../../db/sessionRepo')>();
+  const failing =
+    <A extends unknown[], R>(fn: (...a: A) => Promise<R>) =>
+    (...a: A) => {
+      const make = mocks.fail;
+      mocks.fail = null;
+      return make ? Promise.reject(make()) : fn(...a);
+    };
+  return {
+    ...real,
+    addSet: failing(real.addSet),
+    updateSet: failing(real.updateSet),
+    deleteSet: failing(real.deleteSet),
+  };
+});
+
 beforeEach(async () => {
+  mocks.fail = null;
   await resetDb();
   location.hash = '';
 });
@@ -236,4 +256,54 @@ test('Complete set commits a typed value that was not confirmed with Enter', asy
   await userEvent.type(input, '70');
   fireEvent.click(screen.getByRole('button', { name: 'Complete set' }));
   await vi.waitFor(async () => expect((await db.sets.toArray())[0]?.weight).toBe(70));
+});
+
+test('a failed Complete set shows a one-line inline error and saves nothing', async () => {
+  const { s, ge } = await seed();
+  render(<Logging sessionId={s.id} itemKey={ge.id} />);
+  mocks.fail = () => new Error('QuotaExceededError: disk full\nstack');
+  await userEvent.click(await screen.findByRole('button', { name: 'Complete set' }));
+  expect(await screen.findByRole('alert')).toHaveTextContent('QuotaExceededError: disk full');
+  expect(screen.getByRole('alert')).not.toHaveTextContent('stack');
+  expect(await db.sets.count()).toBe(0);
+  // The next successful set clears the error.
+  await userEvent.click(screen.getByRole('button', { name: 'Complete set' }));
+  await screen.findByRole('button', { name: '1 60 kg × 10' });
+  expect(screen.queryByRole('alert')).toBeNull();
+});
+
+test('Complete set into a session that has just ended navigates home', async () => {
+  const { s, ge } = await seed();
+  location.hash = `#/session/${s.id}/log/${ge.id}`;
+  render(<Logging sessionId={s.id} itemKey={ge.id} />);
+  mocks.fail = () => new SessionEndedError(s.id);
+  await userEvent.click(await screen.findByRole('button', { name: 'Complete set' }));
+  await vi.waitFor(() => expect(location.hash).toBe('#/'));
+});
+
+test('a failed Save or Delete in the edit sheet shows an inline error and keeps the sheet open', async () => {
+  const { s, ge } = await seed();
+  render(<Logging sessionId={s.id} itemKey={ge.id} />);
+  await userEvent.click(await screen.findByRole('button', { name: 'Complete set' }));
+  await userEvent.click(await screen.findByRole('button', { name: '1 60 kg × 10' }));
+  const dialog = within(await screen.findByRole('dialog'));
+  mocks.fail = () => new Error('write failed');
+  await userEvent.click(dialog.getByRole('button', { name: 'Save' }));
+  expect(await dialog.findByRole('alert')).toHaveTextContent('write failed');
+  mocks.fail = () => new Error('delete failed');
+  await userEvent.click(dialog.getByRole('button', { name: 'Delete' }));
+  expect(await dialog.findByRole('alert')).toHaveTextContent('delete failed');
+  expect(screen.getByRole('dialog')).toBeInTheDocument();
+  expect(await db.sets.count()).toBe(1);
+});
+
+test('Save in the edit sheet after the session ended navigates home', async () => {
+  const { s, ge } = await seed();
+  location.hash = `#/session/${s.id}/log/${ge.id}`;
+  render(<Logging sessionId={s.id} itemKey={ge.id} />);
+  await userEvent.click(await screen.findByRole('button', { name: 'Complete set' }));
+  await userEvent.click(await screen.findByRole('button', { name: '1 60 kg × 10' }));
+  mocks.fail = () => new SessionEndedError(s.id);
+  await userEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Save' }));
+  await vi.waitFor(() => expect(location.hash).toBe('#/'));
 });

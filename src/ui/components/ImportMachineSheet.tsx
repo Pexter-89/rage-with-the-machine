@@ -5,6 +5,7 @@ import { CATEGORIES } from '../../domain/catalog';
 import { parseMachineFile, type ParseResult } from '../../domain/importMachine';
 import type { CatalogExercise, GymExercise, Loading } from '../../domain/types';
 import { formatWeight } from '../../domain/metrics';
+import { oneLine as toOneLine } from '../lib/errors';
 import { readFileText } from '../lib/share';
 import Sheet from './Sheet';
 
@@ -16,12 +17,7 @@ interface Props {
   onImported(created: GymExercise[]): void;
 }
 
-const MAX_ERROR = 120;
-
-function oneLine(e: unknown): string {
-  const first = (e instanceof Error ? e.message : String(e)).split('\n')[0].trim() || 'Import failed';
-  return first.length > MAX_ERROR ? first.slice(0, MAX_ERROR) + '…' : first;
-}
+const oneLine = (e: unknown) => toOneLine(e, 'Import failed');
 
 export function loadingSummary(l: Loading): string {
   switch (l.type) {

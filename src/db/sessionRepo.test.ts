@@ -3,6 +3,7 @@ import { RwtmDB, db, resetDb } from './db';
 import { addGym, availableExercises, saveGymExercise } from './gymRepo';
 import { getCatalog } from './catalogRepo';
 import {
+  SessionEndedError,
   addSet,
   closeStaleSessions,
   deleteSet,
@@ -158,6 +159,17 @@ describe('closeStaleSessions', () => {
 });
 
 describe('sets', () => {
+  test('writes into an ended session throw SessionEndedError and change nothing', async () => {
+    const s = await startSession(g.id, T0);
+    const set = await addSet(s.id, item, 62, 10, T0 + 1000);
+    await finishSession(s.id, T0 + 2000);
+    await expect(addSet(s.id, item, 64, 8, T0 + 3000)).rejects.toBeInstanceOf(SessionEndedError);
+    await expect(updateSet(set.id, { reps: 12 }, T0 + 3000)).rejects.toBeInstanceOf(SessionEndedError);
+    await expect(deleteSet(set.id, T0 + 3000)).rejects.toBeInstanceOf(SessionEndedError);
+    expect(await db.sets.where('sessionId').equals(s.id).toArray()).toEqual([set]);
+    expect((await db.sessions.get(s.id))!).toMatchObject({ endedAt: T0 + 2000, lastActivityAt: T0 + 1000 });
+  });
+
   test('addSet order, baseWeight snapshot for plate, bumps lastActivityAt', async () => {
     const s = await startSession(g.id, T0);
     const a = await addSet(s.id, item, 62, 10, T0 + 1000);

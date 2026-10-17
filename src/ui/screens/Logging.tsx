@@ -3,7 +3,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../../db/db';
 import { getCatalog } from '../../db/catalogRepo';
 import { resolveItem } from '../../db/gymRepo';
-import { addSet, deleteSet, getLastTime, prefill, setsForItem, updateSet } from '../../db/sessionRepo';
+import { SessionEndedError, addSet, deleteSet, getLastTime, prefill, setsForItem, updateSet } from '../../db/sessionRepo';
 import type { LastTime } from '../../db/sessionRepo';
 import { formatDate } from '../../domain/dates';
 import { parseRepsInput, parseWeightInput, snapToWheel, wheelValues } from '../../domain/loading';
@@ -12,6 +12,7 @@ import type { PickerItem, SetEntry } from '../../domain/types';
 import Sheet from '../components/Sheet';
 import Wheel from '../components/Wheel';
 import type { WheelHandle } from '../components/Wheel';
+import { oneLine } from '../lib/errors';
 import { navigate } from '../router';
 
 const REPS = Array.from({ length: 50 }, (_, i) => i + 1);
@@ -74,31 +75,44 @@ const WheelPair = forwardRef<PairHandle, PairProps>(function WheelPair({ item, r
   );
 });
 
+/** A failed write shows one line inline; a write into a session that has ended goes home. */
+function writeFailed(e: unknown, show: (text: string) => void): void {
+  if (e instanceof SessionEndedError) navigate({ name: 'home' });
+  else show(oneLine(e));
+}
+
 function EditSheet({ item, set, onClose }: { item: PickerItem; set: SetEntry; onClose(): void }) {
   const [row, setRow] = useState<Row>({ weight: set.weight, reps: set.reps });
+  const [error, setError] = useState<string | null>(null);
   const pair = useRef<PairHandle>(null);
+
+  async function run(write: () => Promise<void>) {
+    try {
+      await write();
+      onClose();
+    } catch (e) {
+      writeFailed(e, setError);
+    }
+  }
+
   return (
     <>
       <div className="input-row">
         <WheelPair ref={pair} item={item} row={row} onChange={setRow} />
       </div>
+      {error && (
+        <p className="error" role="alert">
+          {error}
+        </p>
+      )}
       <div className="nav-row">
         <button
           className="btn btn-primary"
-          onClick={async () => {
-            await updateSet(set.id, pair.current?.flush() ?? row, Date.now());
-            onClose();
-          }}
+          onClick={() => void run(() => updateSet(set.id, pair.current?.flush() ?? row, Date.now()))}
         >
           Save
         </button>
-        <button
-          className="btn"
-          onClick={async () => {
-            await deleteSet(set.id, Date.now());
-            onClose();
-          }}
-        >
+        <button className="btn" onClick={() => void run(() => deleteSet(set.id, Date.now()))}>
           Delete
         </button>
       </div>
@@ -124,6 +138,7 @@ export default function Logging({ sessionId, itemKey }: { sessionId: string; ite
   const inFlight = useRef(false);
   const pair = useRef<PairHandle>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (data?.status === 'home') navigate({ name: 'home' });
@@ -158,6 +173,9 @@ export default function Logging({ sessionId, itemKey }: { sessionId: string; ite
     try {
       const v = pair.current?.flush() ?? row;
       await addSet(sessionId, item, v.weight, v.reps, Date.now());
+      setError(null);
+    } catch (e) {
+      writeFailed(e, setError);
     } finally {
       inFlight.current = false;
       setBusy(false);
@@ -199,6 +217,11 @@ export default function Logging({ sessionId, itemKey }: { sessionId: string; ite
           ✓
         </button>
       </div>
+      {error && (
+        <p className="error" role="alert">
+          {error}
+        </p>
+      )}
 
       <button className="btn btn-ghost" onClick={() => navigate({ name: 'session', sessionId })}>
         ‹ Back to session

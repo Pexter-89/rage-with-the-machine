@@ -16,6 +16,14 @@ export interface ExerciseSummary {
   sets: SetEntry[];
 }
 
+/** Sets belong to open sessions only: editing closed sessions is out of scope for v1 (spec §3.4). */
+export class SessionEndedError extends Error {
+  constructor(sessionId: string) {
+    super(`Session ${sessionId} has ended`);
+    this.name = 'SessionEndedError';
+  }
+}
+
 const byOrder = (a: SetEntry, b: SetEntry) => a.order - b.order || a.completedAt - b.completedAt;
 
 /** Open sessions are `endedAt === null`; IndexedDB cannot index null, so filter. */
@@ -79,6 +87,12 @@ export async function closeStaleSessions(now: number, timeoutMin: number): Promi
 
 // ---- sets ----
 
+/** Must run inside a rw transaction on sessions. */
+async function assertOpen(sessionId: string): Promise<void> {
+  const session = await db.sessions.get(sessionId);
+  if (session && session.endedAt !== null) throw new SessionEndedError(sessionId);
+}
+
 const matchesItem = (s: SetEntry, item: { catalogId: string; gymExerciseId: string | null }) =>
   s.catalogId === item.catalogId && s.gymExerciseId === item.gymExerciseId;
 
@@ -92,6 +106,7 @@ export async function addSet(
   return db.transaction('rw', db.sessions, db.sets, async () => {
     const session = await db.sessions.get(sessionId);
     if (!session) throw new Error(`Session ${sessionId} not found`);
+    if (session.endedAt !== null) throw new SessionEndedError(sessionId);
     const existing = (await db.sets.where('sessionId').equals(sessionId).toArray()).filter((s) => matchesItem(s, item));
     const loading = item.loading;
     const entry: SetEntry = {
@@ -117,6 +132,7 @@ export async function updateSet(id: string, patch: { weight?: number; reps?: num
   await db.transaction('rw', db.sessions, db.sets, async () => {
     const s = await db.sets.get(id);
     if (!s) return;
+    await assertOpen(s.sessionId);
     const changes: { weight?: number; reps?: number } = {};
     if (patch.weight !== undefined) changes.weight = patch.weight;
     if (patch.reps !== undefined) changes.reps = patch.reps;
@@ -129,6 +145,7 @@ export async function deleteSet(id: string, now: number): Promise<void> {
   await db.transaction('rw', db.sessions, db.sets, async () => {
     const s = await db.sets.get(id);
     if (!s) return;
+    await assertOpen(s.sessionId);
     await db.sets.delete(id);
     await db.sessions.update(s.sessionId, { lastActivityAt: now });
   });
