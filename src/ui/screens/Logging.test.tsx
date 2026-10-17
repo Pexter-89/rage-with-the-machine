@@ -211,3 +211,29 @@ test('a typed off-wheel weight is kept when the screen is reopened', async () =>
   render(<Logging sessionId={s.id} itemKey={ge.id} />);
   expect(await screen.findByRole('button', { name: 'KG 63' })).toBeInTheDocument();
 });
+
+test('both wheels moved mid-settle: saved, shown, and repeated on the next tap', async () => {
+  const { s, ge } = await seed();
+  const { container } = render(<Logging sessionId={s.id} itemKey={ge.id} />);
+  await screen.findByRole('button', { name: 'Complete set' });
+  const [w, r] = container.querySelectorAll('.wheel-scroll');
+  scrollTo(w, 2);
+  scrollTo(r, 14); // reps 15
+  await userEvent.click(screen.getByRole('button', { name: 'Complete set' }));
+  expect(await screen.findByRole('button', { name: '1 64 kg × 15' })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'KG 64' })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'REPS 15' })).toBeInTheDocument();
+  await userEvent.click(screen.getByRole('button', { name: 'Complete set' }));
+  expect(await screen.findByRole('button', { name: '2 64 kg × 15' })).toBeInTheDocument();
+});
+
+test('Complete set commits a typed value that was not confirmed with Enter', async () => {
+  const { s, ge } = await seed();
+  render(<Logging sessionId={s.id} itemKey={ge.id} />);
+  await userEvent.click(await screen.findByRole('button', { name: 'KG 60' }));
+  const input = screen.getByRole('textbox');
+  await userEvent.clear(input);
+  await userEvent.type(input, '70');
+  fireEvent.click(screen.getByRole('button', { name: 'Complete set' }));
+  await vi.waitFor(async () => expect((await db.sets.toArray())[0]?.weight).toBe(70));
+});

@@ -41,6 +41,8 @@ export default forwardRef<WheelHandle, Props>(function Wheel({ label, values, va
   const down = useRef({ pointer: false, touch: false });
   const [text, setText] = useState('');
   const done = useRef(false);
+  const typed = useRef({ text: '', parse });
+  typed.current = { text, parse };
 
   const scrollToValue = () => {
     const el = scroller.current;
@@ -80,7 +82,17 @@ export default forwardRef<WheelHandle, Props>(function Wheel({ label, values, va
         clearTimeout(timer.current);
         const el = scroller.current;
         const { display: d, value: v, onChange: change, editing: ed } = live.current;
-        if (!el || ed) return v;
+        if (ed) {
+          // Commit a typed value that has not been confirmed yet.
+          if (done.current) return v;
+          const parsed = typed.current.parse(typed.current.text);
+          if (parsed === null) return v;
+          done.current = true;
+          if (parsed !== v) change(parsed);
+          setEditing(false);
+          return parsed;
+        }
+        if (!el) return v;
         const next = d[indexFromScroll(el.scrollTop, ITEM_HEIGHT, d.length)] ?? v;
         if (next !== v) change(next);
         return next;

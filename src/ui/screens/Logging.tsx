@@ -38,7 +38,7 @@ const isLevel = (item: PickerItem) => item.loading.type === 'stack' && item.load
 interface PairProps {
   item: PickerItem;
   row: Row;
-  onChange(row: Row): void;
+  onChange(update: (r: Row) => Row): void;
 }
 
 interface PairHandle {
@@ -58,7 +58,7 @@ const WheelPair = forwardRef<PairHandle, PairProps>(function WheelPair({ item, r
         label={weightLabel(item)}
         values={wheelValues(item.loading)}
         value={row.weight}
-        onChange={(weight) => onChange({ ...row, weight })}
+        onChange={(weight) => onChange((r) => ({ ...r, weight }))}
         parse={parseWeightInput}
         suffix={isLevel(item) ? 'L' : undefined}
       />
@@ -67,7 +67,7 @@ const WheelPair = forwardRef<PairHandle, PairProps>(function WheelPair({ item, r
         label={item.unilateral ? 'REPS / SIDE' : 'REPS'}
         values={REPS}
         value={row.reps}
-        onChange={(reps) => onChange({ ...row, reps })}
+        onChange={(reps) => onChange((r) => ({ ...r, reps }))}
         parse={parseRepsInput}
       />
     </>
@@ -194,7 +194,7 @@ export default function Logging({ sessionId, itemKey }: { sessionId: string; ite
       </ol>
 
       <div className="input-row">
-        <WheelPair ref={pair} item={item} row={row} onChange={setRow} />
+        <WheelPair ref={pair} item={item} row={row} onChange={(u) => setRow((r) => (r ? u(r) : r))} />
         <button className="btn btn-ok btn-complete" aria-label="Complete set" disabled={busy} onClick={complete}>
           ✓
         </button>
