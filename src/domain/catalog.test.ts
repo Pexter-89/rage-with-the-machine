@@ -29,3 +29,21 @@ test('full body and core have real entries', () => {
   expect(by('deadlift').category).toBe('fullbody');
   expect(by('back-extension').category).toBe('core');
 });
+test('unilateral flags are settled: exactly the exercises done and logged one side at a time', () => {
+  // Changing this list reinterprets logged history (reps are per side), so it is pinned.
+  const unilateral = BUILT_IN_CATALOG.filter(e => e.unilateral).map(e => e.id).sort();
+  expect(unilateral).toEqual([
+    'bulgarian-split-squat',
+    'cable-glute-kickback',
+    'cable-lateral-raise',
+    'cable-woodchop',
+    'dumbbell-lunge',
+    'dumbbell-step-up',
+    'one-arm-dumbbell-row',
+    'rotary-torso',
+    'turkish-get-up',
+  ]);
+  // Both limbs at once: not unilateral.
+  for (const id of ['dumbbell-curl', 'hammer-curl', 'dumbbell-lateral-raise', 'leg-press', 'leg-extension', 'lying-leg-curl'])
+    expect(BUILT_IN_CATALOG.find(e => e.id === id)!.unilateral).toBeFalsy();
+});

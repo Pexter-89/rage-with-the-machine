@@ -62,7 +62,7 @@ export const BUILT_IN_CATALOG: CatalogExercise[] = [
   barbell('romanian-deadlift', 'Romanian Deadlift', 'legs'),
   barbell('barbell-hip-thrust', 'Barbell Hip Thrust', 'legs'),
   kettlebell('goblet-squat', 'Goblet Squat', 'legs'),
-  dumbbell('dumbbell-lunge', 'Dumbbell Lunge', 'legs'),
+  dumbbell('dumbbell-lunge', 'Dumbbell Lunge', 'legs', { unilateral: true }),
   dumbbell('bulgarian-split-squat', 'Bulgarian Split Squat', 'legs', { unilateral: true }),
   dumbbell('dumbbell-step-up', 'Dumbbell Step-Up', 'legs', { unilateral: true }),
   // Chest
@@ -117,7 +117,7 @@ export const BUILT_IN_CATALOG: CatalogExercise[] = [
   machine('ab-crunch-machine', 'Ab Crunch Machine', 'core'),
   machine('cable-crunch', 'Cable Crunch', 'core'),
   machine('cable-woodchop', 'Cable Woodchop', 'core', { unilateral: true }),
-  machine('rotary-torso', 'Rotary Torso', 'core'),
+  machine('rotary-torso', 'Rotary Torso', 'core', { unilateral: true }),
   bodyweight('hanging-leg-raise', 'Hanging Leg Raise', 'core'),
   bodyweight('crunch', 'Crunch', 'core'),
   bodyweight('plank', 'Plank', 'core'),
