@@ -28,10 +28,12 @@ export default function Wheel({ label, values, value, onChange, parse, suffix }:
 
   const scroller = useRef<HTMLDivElement>(null);
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
-  const live = useRef({ display, value, onChange });
-  live.current = { display, value, onChange };
+  const live = useRef({ display, value, onChange, editing: false });
+  live.current = { display, value, onChange, editing: false };
 
   const [editing, setEditing] = useState(false);
+  live.current.editing = editing;
+  const down = useRef({ pointer: false, touch: false });
   const [text, setText] = useState('');
   const done = useRef(false);
 
@@ -46,7 +48,8 @@ export default function Wheel({ label, values, value, onChange, parse, suffix }:
   const settle = () => {
     const el = scroller.current;
     if (!el) return;
-    const { display: d, value: v, onChange: change } = live.current;
+    const { display: d, value: v, onChange: change, editing: ed } = live.current;
+    if (ed || down.current.pointer || down.current.touch) return;
     const next = d[indexFromScroll(el.scrollTop, ITEM_HEIGHT, d.length)];
     if (next !== undefined && next !== v) change(next);
   };
@@ -65,9 +68,25 @@ export default function Wheel({ label, values, value, onChange, parse, suffix }:
     };
   }, []);
 
+  const hasScrollEnd = () => 'onscrollend' in window;
+
+  // Browsers with `scrollend` settle there; others fall back to a debounce.
   const onScroll = () => {
     clearTimeout(timer.current);
-    timer.current = setTimeout(settle, SETTLE_MS);
+    if (!hasScrollEnd()) timer.current = setTimeout(settle, SETTLE_MS);
+  };
+
+  const press = (kind: 'pointer' | 'touch') => {
+    down.current[kind] = true;
+    clearTimeout(timer.current);
+  };
+
+  const release = (kind: 'pointer' | 'touch') => {
+    down.current[kind] = false;
+    if (down.current.pointer || down.current.touch) return;
+    // One settle after release; a following scroll event cancels it and scrollend/debounce takes over.
+    clearTimeout(timer.current);
+    timer.current = setTimeout(settle, hasScrollEnd() ? 300 : SETTLE_MS);
   };
 
   const startEdit = () => {
@@ -89,7 +108,17 @@ export default function Wheel({ label, values, value, onChange, parse, suffix }:
   return (
     <div className="wheel">
       <span className="wheel-label">{label}</span>
-      <div className="wheel-scroll" ref={scroller} onScroll={onScroll}>
+      <div className="wheel-scroll" 
+        ref={scroller}
+        onScroll={onScroll}
+        onTouchStart={() => press('touch')}
+        onTouchEnd={() => release('touch')}
+        onTouchCancel={() => release('touch')}
+        // Touch pointers are cancelled when scrolling starts; touch events track those instead.
+        onPointerDown={(e) => e.pointerType !== 'touch' && press('pointer')}
+        onPointerUp={(e) => e.pointerType !== 'touch' && release('pointer')}
+        onPointerCancel={(e) => e.pointerType !== 'touch' && release('pointer')}
+      >
         {display.map((v, i) =>
           i !== index ? (
             <div key={v} className="wheel-item" aria-hidden="true">
