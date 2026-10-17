@@ -55,3 +55,16 @@ test('tapping a free exercise name opens the editor for its override', async () 
   await user.click(await screen.findByRole('button', { name: 'Push-Up' }));
   expect(location.hash).toBe(`#/gym/${g.id}/exercise/new?catalog=push-up`);
 });
+
+test('choosing a file through GymDetail opens the import sheet with its preview', async () => {
+  const user = userEvent.setup();
+  const g = await addGym('Kamppi');
+  render(<GymDetail gymId={g.id} />);
+  const json = JSON.stringify({
+    format: 'rwtm-machine',
+    version: 1,
+    machines: [{ exercise: 'leg-press', newExercise: null, label: '', loading: { type: 'stack', weights: [5, 10] }, notes: '' }],
+  });
+  await user.upload(await screen.findByLabelText('Machine file'), new File([json], 'm.json', { type: 'application/json' }));
+  expect(await screen.findByText('Leg Press — Legs · Stack 5–10 kg')).toBeInTheDocument();
+});

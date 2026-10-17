@@ -10,8 +10,8 @@ import Sheet from './Sheet';
 
 interface Props {
   gymId: string;
-  /** Opens the phone's file chooser as soon as the sheet appears. */
-  openFilePicker?: boolean;
+  /** A file already chosen by the caller; read and parsed on mount. */
+  initialFile?: File;
   onClose(): void;
   onImported(created: GymExercise[]): void;
 }
@@ -38,7 +38,7 @@ export function loadingSummary(l: Loading): string {
   }
 }
 
-export default function ImportMachineSheet({ gymId, openFilePicker, onClose, onImported }: Props) {
+export default function ImportMachineSheet({ gymId, initialFile, onClose, onImported }: Props) {
   const [text, setText] = useState('');
   const [result, setResult] = useState<ParseResult | null>(null);
   const [catalog, setCatalog] = useState<CatalogExercise[]>([]);
@@ -47,10 +47,6 @@ export default function ImportMachineSheet({ gymId, openFilePicker, onClose, onI
   const fileRef = useRef<HTMLInputElement>(null);
   const seq = useRef(0);
   const canPaste = typeof navigator !== 'undefined' && !!navigator.clipboard?.readText;
-
-  useEffect(() => {
-    if (openFilePicker) fileRef.current?.click();
-  }, [openFilePicker]);
 
   async function load(next: string) {
     const mine = ++seq.current;
@@ -79,6 +75,11 @@ export default function ImportMachineSheet({ gymId, openFilePicker, onClose, onI
       setResult({ ok: false, error: oneLine(e) });
     }
   }
+
+  useEffect(() => {
+    if (initialFile) void onFile(initialFile);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialFile]);
 
   async function pasteFromClipboard() {
     try {

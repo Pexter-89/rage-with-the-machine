@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { getCatalog } from '../../db/catalogRepo';
 import { db } from '../../db/db';
@@ -9,7 +9,8 @@ import ImportMachineSheet from '../components/ImportMachineSheet';
 import { navigate } from '../router';
 
 export default function GymDetail({ gymId }: { gymId: string }) {
-  const [importing, setImporting] = useState<null | 'file' | 'paste'>(null);
+  const [importing, setImporting] = useState<null | { file?: File }>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
   const data = useLiveQuery(async () => {
     const gym = await db.gyms.get(gymId);
     const [catalog, machines, mine] = await Promise.all([
@@ -97,10 +98,22 @@ export default function GymDetail({ gymId }: { gymId: string }) {
       })}
 
       <div className="bottom-actions">
-        <button className="btn btn-primary" onClick={() => setImporting('file')}>
+        <input
+          ref={fileRef}
+          type="file"
+          hidden
+          aria-label="Machine file"
+          accept=".json,.md,.txt,application/json,text/plain,text/markdown"
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            e.target.value = '';
+            if (file) setImporting({ file });
+          }}
+        />
+        <button className="btn btn-primary" onClick={() => fileRef.current?.click()}>
           Import machine file
         </button>
-        <button className="btn btn-ghost" onClick={() => setImporting('paste')}>
+        <button className="btn btn-ghost" onClick={() => setImporting({})}>
           Paste from Claude
         </button>
         <button className="btn btn-ghost" onClick={() => navigate({ name: 'exercise', gymId, geId: 'new' })}>
@@ -111,7 +124,7 @@ export default function GymDetail({ gymId }: { gymId: string }) {
       {importing && (
         <ImportMachineSheet
           gymId={gymId}
-          openFilePicker={importing === 'file'}
+          initialFile={importing.file}
           onClose={() => setImporting(null)}
           onImported={() => {}}
         />

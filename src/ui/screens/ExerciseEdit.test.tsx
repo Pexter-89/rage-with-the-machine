@@ -189,3 +189,34 @@ test('Delete removes the gym exercise and returns to the gym', async () => {
   await vi.waitFor(async () => expect(await db.gymExercises.count()).toBe(0));
   expect(location.hash).toBe(`#/gym/${g.id}`);
 });
+
+test('decimal commas in stack weights are kept', async () => {
+  const user = userEvent.setup();
+  const g = await addGym('K');
+  for (const [input, want] of [
+    ['2,5 5 7,5', [2.5, 5, 7.5]],
+    ['1,25 2,5', [1.25, 2.5]],
+  ] as const) {
+    await db.gymExercises.clear();
+    const { unmount } = render(<ExerciseEdit gymId={g.id} geId="new" />);
+    await user.selectOptions(await screen.findByLabelText('Exercise'), 'leg-press');
+    await user.type(screen.getByLabelText('Stack weights'), input);
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    await vi.waitFor(async () => expect(await db.gymExercises.count()).toBe(1));
+    expect((await db.gymExercises.toArray())[0].loading).toMatchObject({ weights: [...want] });
+    unmount();
+  }
+});
+
+test('a machine with sets offers Hide instead of Delete; hiding removes it from the picker', async () => {
+  const user = userEvent.setup();
+  const { g, ge } = await plateWithHistory();
+  render(<ExerciseEdit gymId={g.id} geId={ge.id} />);
+  expect(await screen.findByRole('button', { name: 'Hide' })).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Delete' })).toBeNull();
+  await user.click(screen.getByRole('button', { name: 'Hide' }));
+  await vi.waitFor(async () => expect((await db.gymExercises.get(ge.id))!.hidden).toBe(true));
+  const { availableExercises } = await import('../../db/gymRepo');
+  const { getCatalog } = await import('../../db/catalogRepo');
+  expect((await availableExercises(g.id, await getCatalog())).some((i) => i.gymExerciseId === ge.id)).toBe(false);
+});

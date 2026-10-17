@@ -87,6 +87,7 @@ export default function ExerciseEdit({ gymId, geId, catalogId }: Props) {
   const [form, setForm] = useState<Form | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [setCount, setSetCount] = useState(0);
 
   useEffect(() => {
     let live = true;
@@ -105,6 +106,9 @@ export default function ExerciseEdit({ gymId, geId, catalogId }: Props) {
         next = { ...next, catalogId: entry.id, loadingType: loadingTypeFor(entry.kind) };
         if (entry.defaultLoading) next = { ...next, ...formFromLoading(entry.defaultLoading) };
       }
+      const count = ge ? await db.sets.where('gymExerciseId').equals(ge.id).count() : 0;
+      if (!live) return;
+      setSetCount(count);
       setCatalog(cat);
       setExisting(ge ?? null);
       setForm(next);
@@ -138,7 +142,7 @@ export default function ExerciseEdit({ gymId, geId, catalogId }: Props) {
     if (!kind) return 'Choose an exercise';
     if (!fits(kind, lt)) return 'This loading type does not fit the exercise';
     if (lt === 'stack') {
-      const parts = form!.weights.split(/[\s,]+/).filter(Boolean);
+      const parts = form!.weights.split(/[\s;]+|,(?=\s|$)/).filter(Boolean);
       if (parts.length === 0) return 'Enter at least one weight';
       const weights: number[] = [];
       for (const p of parts) {
@@ -212,6 +216,12 @@ export default function ExerciseEdit({ gymId, geId, catalogId }: Props) {
       setError(e instanceof Error ? e.message.split('\n')[0] : 'Could not save');
       setBusy(false);
     }
+  }
+
+  async function toggleHidden() {
+    if (!existing) return;
+    await db.gymExercises.update(existing.id, { hidden: !existing.hidden });
+    navigate({ name: 'gym', gymId });
   }
 
   async function remove() {
@@ -301,6 +311,7 @@ export default function ExerciseEdit({ gymId, geId, catalogId }: Props) {
         {lt === 'stack' && (
           <>
             {field('Stack weights', 'weights')}
+            <p className="hint">Separate with spaces; use , or . for decimals</p>
             <div className="inline-form" role="group" aria-label="Unit">
               {(['kg', 'level'] as const).map((u) => (
                 <button
@@ -350,9 +361,14 @@ export default function ExerciseEdit({ gymId, geId, catalogId }: Props) {
           <button type="submit" className="btn btn-primary" disabled={busy}>
             Save
           </button>
-          {existing && (
+          {existing && setCount === 0 && (
             <button type="button" className="btn btn-ghost" onClick={() => void remove()}>
               Delete
+            </button>
+          )}
+          {existing && setCount > 0 && (
+            <button type="button" className="btn btn-ghost" onClick={() => void toggleHidden()}>
+              {existing.hidden ? 'Show' : 'Hide'}
             </button>
           )}
         </div>

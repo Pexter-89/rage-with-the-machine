@@ -34,7 +34,24 @@ test('shareOrDownload falls back to a download link and revokes the URL', async 
     expect(this.download).toBe('x.csv');
     expect(this.href).toBe('blob:abc');
   });
+  vi.useFakeTimers();
+  try {
+    await shareOrDownload('x.csv', new Blob(['a']));
+    expect(click).toHaveBeenCalledTimes(1);
+    expect(URL.revokeObjectURL).not.toHaveBeenCalled();
+    vi.runAllTimers();
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:abc');
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+test('shareOrDownload falls back to download when share is NotAllowedError', async () => {
+  const err = Object.assign(new Error('no activation'), { name: 'NotAllowedError' });
+  vi.stubGlobal('navigator', { canShare: () => true, share: vi.fn().mockRejectedValue(err) });
+  URL.createObjectURL = vi.fn(() => 'blob:abc');
+  URL.revokeObjectURL = vi.fn();
+  const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
   await shareOrDownload('x.csv', new Blob(['a']));
   expect(click).toHaveBeenCalledTimes(1);
-  expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:abc');
 });
