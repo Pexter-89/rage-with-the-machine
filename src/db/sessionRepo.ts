@@ -1,0 +1,190 @@
+import type { PickerItem, Session, SetEntry } from '../domain/types';
+import { db } from './db';
+
+export interface LastTime {
+  sessionId: string;
+  gymId: string;
+  date: number;
+  sets: SetEntry[];
+}
+
+export interface ExerciseSummary {
+  key: string;
+  catalogId: string;
+  gymExerciseId: string | null;
+  firstAt: number;
+  sets: SetEntry[];
+}
+
+const byOrder = (a: SetEntry, b: SetEntry) => a.order - b.order || a.completedAt - b.completedAt;
+
+/** Open sessions are `endedAt === null`; IndexedDB cannot index null, so filter. */
+const openSessions = () => db.sessions.filter((s) => s.endedAt === null);
+
+/** Closes `id` at `endedAt`, or deletes it when it has no sets. Must run inside a rw transaction on sessions + sets. */
+async function closeOrDelete(id: string, endedAt: number): Promise<void> {
+  if ((await db.sets.where('sessionId').equals(id).count()) === 0) {
+    await db.sessions.delete(id);
+  } else {
+    await db.sessions.update(id, { endedAt });
+  }
+}
+
+export async function getOpenSession(): Promise<Session | null> {
+  return (await openSessions().first()) ?? null;
+}
+
+export async function startSession(gymId: string, now: number): Promise<Session> {
+  return db.transaction('rw', db.sessions, db.sets, async () => {
+    for (const open of await openSessions().toArray()) await closeOrDelete(open.id, now);
+    const session: Session = { id: crypto.randomUUID(), gymId, startedAt: now, endedAt: null, lastActivityAt: now };
+    await db.sessions.add(session);
+    return session;
+  });
+}
+
+export async function finishSession(id: string, now: number): Promise<void> {
+  await db.transaction('rw', db.sessions, db.sets, async () => {
+    const s = await db.sessions.get(id);
+    if (!s || s.endedAt !== null) return;
+    await closeOrDelete(id, now);
+  });
+}
+
+export async function closeStaleSessions(now: number, timeoutMin: number): Promise<void> {
+  await db.transaction('rw', db.sessions, db.sets, async () => {
+    for (const s of await openSessions().toArray()) {
+      if (now - s.lastActivityAt > timeoutMin * 60_000) await closeOrDelete(s.id, s.lastActivityAt);
+    }
+  });
+}
+
+// ---- sets ----
+
+const matchesItem = (s: SetEntry, item: { catalogId: string; gymExerciseId: string | null }) =>
+  s.catalogId === item.catalogId && s.gymExerciseId === item.gymExerciseId;
+
+export async function addSet(
+  sessionId: string,
+  item: PickerItem,
+  weight: number,
+  reps: number,
+  now: number,
+): Promise<SetEntry> {
+  return db.transaction('rw', db.sessions, db.sets, async () => {
+    const session = await db.sessions.get(sessionId);
+    if (!session) throw new Error(`Session ${sessionId} not found`);
+    const existing = (await db.sets.where('sessionId').equals(sessionId).toArray()).filter((s) => matchesItem(s, item));
+    const loading = item.loading;
+    const entry: SetEntry = {
+      id: crypto.randomUUID(),
+      sessionId,
+      gymId: session.gymId,
+      catalogId: item.catalogId,
+      gymExerciseId: item.gymExerciseId,
+      order: existing.length + 1,
+      weight,
+      reps,
+      baseWeight: loading.type === 'plate' ? loading.base : null,
+      unit: loading.type === 'stack' ? (loading.unit ?? 'kg') : 'kg',
+      completedAt: now,
+    };
+    await db.sets.add(entry);
+    await db.sessions.update(sessionId, { lastActivityAt: now });
+    return entry;
+  });
+}
+
+export async function updateSet(id: string, patch: { weight?: number; reps?: number }, now: number): Promise<void> {
+  await db.transaction('rw', db.sessions, db.sets, async () => {
+    const s = await db.sets.get(id);
+    if (!s) return;
+    const changes: { weight?: number; reps?: number } = {};
+    if (patch.weight !== undefined) changes.weight = patch.weight;
+    if (patch.reps !== undefined) changes.reps = patch.reps;
+    await db.sets.update(id, changes);
+    await db.sessions.update(s.sessionId, { lastActivityAt: now });
+  });
+}
+
+export async function deleteSet(id: string, now: number): Promise<void> {
+  await db.transaction('rw', db.sessions, db.sets, async () => {
+    const s = await db.sets.get(id);
+    if (!s) return;
+    await db.sets.delete(id);
+    await db.sessions.update(s.sessionId, { lastActivityAt: now });
+  });
+}
+
+export async function setsForItem(sessionId: string, item: PickerItem): Promise<SetEntry[]> {
+  const all = await db.sets.where('sessionId').equals(sessionId).toArray();
+  return all.filter((s) => matchesItem(s, item)).sort(byOrder);
+}
+
+// ---- last time / prefill ----
+
+export async function getLastTime(
+  catalogId: string,
+  gymId: string,
+  excludeSessionId: string,
+): Promise<LastTime | null> {
+  const sets = (await db.sets.where('catalogId').equals(catalogId).toArray()).filter(
+    (s) => s.sessionId !== excludeSessionId,
+  );
+  if (sets.length === 0) return null;
+
+  const bySession = new Map<string, SetEntry[]>();
+  for (const s of sets) {
+    const list = bySession.get(s.sessionId);
+    if (list) list.push(s);
+    else bySession.set(s.sessionId, [s]);
+  }
+  const latest = (list: SetEntry[]) => list.reduce((m, s) => Math.max(m, s.completedAt), -Infinity);
+
+  const pick = (candidates: [string, SetEntry[]][]) =>
+    candidates.reduce<[string, SetEntry[]] | null>((best, c) => (!best || latest(c[1]) > latest(best[1]) ? c : best), null);
+
+  const all = [...bySession.entries()];
+  const chosen = pick(all.filter(([, list]) => list[0].gymId === gymId)) ?? pick(all);
+  if (!chosen) return null;
+
+  const [sessionId, list] = chosen;
+  const session = await db.sessions.get(sessionId);
+  if (!session) return null;
+  return { sessionId, gymId: session.gymId, date: session.startedAt, sets: list.sort(byOrder) };
+}
+
+export function prefill(current: SetEntry[], last: LastTime | null): { weight: number; reps: number } | null {
+  const pickLast = (sets: SetEntry[]) => (sets.length ? [...sets].sort(byOrder)[sets.length - 1] : null);
+  const s = pickLast(current) ?? (last ? pickLast(last.sets) : null);
+  return s ? { weight: s.weight, reps: s.reps } : null;
+}
+
+// ---- session summary ----
+
+export async function sessionExercises(sessionId: string): Promise<ExerciseSummary[]> {
+  const sets = await db.sets.where('sessionId').equals(sessionId).toArray();
+  const groups = new Map<string, ExerciseSummary>();
+  for (const s of sets.sort((a, b) => a.completedAt - b.completedAt || a.order - b.order)) {
+    const key = s.gymExerciseId ?? 'c:' + s.catalogId;
+    const g = groups.get(key);
+    if (g) g.sets.push(s);
+    else groups.set(key, { key, catalogId: s.catalogId, gymExerciseId: s.gymExerciseId, firstAt: s.completedAt, sets: [s] });
+  }
+  const out = [...groups.values()];
+  for (const g of out) g.sets.sort(byOrder);
+  return out.sort((a, b) => a.firstAt - b.firstAt);
+}
+
+// ---- plate base edit ----
+
+export async function recomputePlateHistory(gymExerciseId: string, oldBase: number, newBase: number): Promise<number> {
+  return db.transaction('rw', db.sets, async () => {
+    const hit = (await db.sets.where('gymExerciseId').equals(gymExerciseId).toArray()).filter(
+      (s) => s.baseWeight === oldBase,
+    );
+    const delta = newBase - oldBase;
+    for (const s of hit) await db.sets.update(s.id, { weight: s.weight + delta, baseWeight: newBase });
+    return hit.length;
+  });
+}
