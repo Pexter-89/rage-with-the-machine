@@ -1,4 +1,6 @@
 import { navigate, useRoute } from './router';
+import ExerciseEdit from './screens/ExerciseEdit';
+import GymDetail from './screens/GymDetail';
 import Gyms from './screens/Gyms';
 import Home from './screens/Home';
 import Logging from './screens/Logging';
@@ -31,6 +33,17 @@ export default function App() {
       return <Picker sessionId={route.sessionId} />;
     case 'log':
       return <Logging key={`${route.sessionId}/${route.key}`} sessionId={route.sessionId} itemKey={route.key} />;
+    case 'gym':
+      return <GymDetail key={route.gymId} gymId={route.gymId} />;
+    case 'exercise':
+      return (
+        <ExerciseEdit
+          key={`${route.gymId}/${route.geId}/${route.catalogId ?? ''}`}
+          gymId={route.gymId}
+          geId={route.geId}
+          catalogId={route.catalogId}
+        />
+      );
     default:
       return <Placeholder name={route.name} />;
   }

@@ -71,3 +71,24 @@ test('a missing session redirects home', async () => {
   render(<Picker sessionId="nope" />);
   await vi.waitFor(() => expect(location.hash).toBe('#/'));
 });
+
+test('Import machine from the picker navigates to the single created machine', async () => {
+  const user = userEvent.setup();
+  const { s, g } = await seed();
+  render(<Picker sessionId={s.id} />);
+  await user.click(await screen.findByRole('button', { name: 'Import machine' }));
+  await user.click(screen.getByLabelText('Pasted text'));
+  await user.paste(
+    JSON.stringify({
+      format: 'rwtm-machine',
+      version: 1,
+      machines: [
+        { exercise: 'hack-squat', newExercise: null, label: 'Hammer', loading: { type: 'stack', weights: [10, 20] }, notes: '' },
+      ],
+    }),
+  );
+  await user.click(await screen.findByRole('button', { name: 'Import' }));
+  await vi.waitFor(async () => expect(await db.gymExercises.where('gymId').equals(g.id).count()).toBe(2));
+  const created = (await db.gymExercises.toArray()).find((e) => e.catalogId === 'hack-squat')!;
+  expect(location.hash).toBe(`#/session/${s.id}/log/${created.id}`);
+});

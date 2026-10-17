@@ -1,18 +1,20 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../../db/db';
 import { getCatalog } from '../../db/catalogRepo';
 import { availableExercises } from '../../db/gymRepo';
 import { CATEGORIES } from '../../domain/catalog';
+import ImportMachineSheet from '../components/ImportMachineSheet';
 import { navigate } from '../router';
 
 export default function Picker({ sessionId }: { sessionId: string }) {
+  const [importing, setImporting] = useState(false);
   const data = useLiveQuery(async () => {
     const session = await db.sessions.get(sessionId);
     if (!session || session.endedAt !== null) return null;
     const gym = await db.gyms.get(session.gymId);
     const items = await availableExercises(session.gymId, await getCatalog());
-    return { gymName: gym?.name ?? '', items };
+    return { gymId: session.gymId, gymName: gym?.name ?? '', items };
   }, [sessionId]);
 
   useEffect(() => {
@@ -27,7 +29,12 @@ export default function Picker({ sessionId }: { sessionId: string }) {
 
   return (
     <main className="screen picker">
-      <h1 className="title">{data.gymName}</h1>
+      <header className="bar">
+        <h1 className="title">{data.gymName}</h1>
+        <button className="btn btn-ghost btn-small" onClick={() => setImporting(true)}>
+          Import machine
+        </button>
+      </header>
       <div className="columns">
         {columns.map((c) => (
           <section key={c.id} className="column">
@@ -50,6 +57,15 @@ export default function Picker({ sessionId }: { sessionId: string }) {
       <button className="btn btn-ghost" onClick={() => navigate({ name: 'session', sessionId })}>
         ‹ Back
       </button>
+      {importing && (
+        <ImportMachineSheet
+          gymId={data.gymId}
+          onClose={() => setImporting(false)}
+          onImported={(created) => {
+            if (created.length === 1) navigate({ name: 'log', sessionId, key: created[0].id });
+          }}
+        />
+      )}
     </main>
   );
 }

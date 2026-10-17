@@ -439,3 +439,58 @@ input {
   font-size: 1rem;
   text-align: center;
 }
+
+/* ---- gym detail and exercise editor ---- */
+.section-title {
+  margin: 8px 0 0;
+  font-size: 1rem;
+}
+
+.free-row {
+  flex-direction: row;
+  align-items: center;
+}
+
+.bottom-actions {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px 0 calc(8px + env(safe-area-inset-bottom));
+  background: var(--bg);
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.85rem;
+}
+
+select,
+textarea {
+  min-height: 44px;
+  padding: 8px 12px;
+  border: 1px solid var(--muted);
+  border-radius: 12px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+}
+
+.error {
+  margin: 0;
+  color: #e5484d;
+  font-size: 0.9rem;
+}
+
+.preview .row {
+  flex-direction: row;
+}
