@@ -10,6 +10,7 @@ import {
   deleteGymExercise,
   importMachines,
   listGymMachines,
+  machinesAlreadyAtGym,
   listGyms,
   moveGym,
   renameGym,
@@ -209,6 +210,44 @@ describe('importMachines', () => {
     expect(await db.gymExercises.count()).toBe(2);
   });
 
+  test('machines the gym already has (same exercise, label and loading) are skipped; only created ones return', async () => {
+    const gym = await addGym('G');
+    const first = await importMachines(gym.id, { ok: true, newExercises: [], machines: [machine('leg-press', 'A')] });
+    const parsed = {
+      ok: true as const,
+      newExercises: [],
+      machines: [
+        machine('leg-press', 'A'), // duplicate
+        { ...machine('leg-press', 'A'), loading: { type: 'plate' as const, base: 70, step: 2.5 } }, // other loading
+        machine('leg-press', 'B'), // other label
+        machine('hack-squat', 'A'), // other exercise
+      ],
+    };
+    expect(await machinesAlreadyAtGym(gym.id, parsed.machines)).toEqual([true, false, false, false]);
+    const out = await importMachines(gym.id, parsed);
+    expect(out).toHaveLength(3);
+    expect(out.map((m) => m.id)).not.toContain(first[0].id);
+    expect(await db.gymExercises.where('gymId').equals(gym.id).count()).toBe(4);
+  });
+
+  test('re-importing the same file at the same gym creates nothing, even with a stale parse', async () => {
+    const gym = await addGym('G');
+    // Parsed before either import ran, so it still declares the custom entry as new (a double tap / race).
+    const parsed = { ok: true as const, newExercises: [custom], machines: [machine('hip-thing', 'A')] };
+    expect(await importMachines(gym.id, parsed)).toHaveLength(1);
+    expect(await importMachines(gym.id, parsed)).toEqual([]);
+    expect(await db.gymExercises.count()).toBe(1);
+    expect(await db.customCatalog.count()).toBe(1);
+  });
+
+  test('a hidden copy at the gym also counts as already there; other gyms do not', async () => {
+    const gym = await addGym('G');
+    const other = await addGym('O');
+    await saveGymExercise({ gymId: gym.id, catalogId: 'leg-press', label: 'A', notes: '', loading: plate, hidden: true });
+    expect(await machinesAlreadyAtGym(gym.id, [machine('leg-press', 'A')])).toEqual([true]);
+    expect(await machinesAlreadyAtGym(other.id, [machine('leg-press', 'A')])).toEqual([false]);
+  });
+
   test('failure adds nothing', async () => {
     const gym = await addGym('G');
     // the second custom entry collides with a built-in id, so addCustomEntries throws
@@ -216,7 +255,7 @@ describe('importMachines', () => {
       importMachines(gym.id, {
         ok: true,
         newExercises: [custom, { ...custom, id: 'leg-press' }],
-        machines: [machine('hip-thing', 'A')],
+        machines: [machine('hip-thing', 'A'), machine('leg-press', 'B')],
       }),
     ).rejects.toThrow();
     expect(await db.customCatalog.count()).toBe(0);

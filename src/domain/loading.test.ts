@@ -1,4 +1,4 @@
-import { wheelValues, snapToWheel, parseWeightInput, parseRepsInput } from './loading';
+import { wheelValues, snapToWheel, parseWeightInput, parseRepsInput, sameLoading } from './loading';
 import { DUMBBELL_LOADING, BARBELL_LOADING, BODYWEIGHT_LOADING } from './catalog';
 test('stack sorted', () => expect(wheelValues({type:'stack',weights:[15,5,10]})).toEqual([5,10,15]));
 test('plate from base', () => {
@@ -27,4 +27,13 @@ test('non-positive steps do not hang and yield a single value', () => {
     expect(wheelValues({ type: 'free', start: 1, step: 1, max: 60, bigStepFrom: 10, bigStep: step })).toEqual([1]);
     expect(wheelValues({ type: 'bodyweight', step, max: 100 })).toEqual([0]);
   }
+});
+
+test('sameLoading is a deep equality, independent of key order', () => {
+  expect(sameLoading({ type: 'plate', base: 62, step: 2.5 }, { step: 2.5, base: 62, type: 'plate' })).toBe(true);
+  expect(sameLoading({ type: 'plate', base: 62, step: 2.5 }, { type: 'plate', base: 60, step: 2.5 })).toBe(false);
+  expect(sameLoading({ type: 'stack', weights: [5, 10] }, { type: 'stack', weights: [5, 10] })).toBe(true);
+  expect(sameLoading({ type: 'stack', weights: [5, 10] }, { type: 'stack', weights: [5, 10, 15] })).toBe(false);
+  expect(sameLoading({ type: 'stack', weights: [5, 10] }, { type: 'stack', weights: [5, 10], unit: 'level' })).toBe(false);
+  expect(sameLoading({ type: 'stack', weights: [1] }, { type: 'plate', base: 1, step: 1 })).toBe(false);
 });

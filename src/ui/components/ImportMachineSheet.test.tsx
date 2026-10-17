@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { addGym } from '../../db/gymRepo';
+import { addGym, saveGymExercise } from '../../db/gymRepo';
 import { db, resetDb } from '../../db/db';
 import ImportMachineSheet from './ImportMachineSheet';
 
@@ -62,6 +62,55 @@ test('ImportMachineSheet: pasted markdown → preview → Import creates gym exe
   expect(await db.gymExercises.where('gymId').equals(g.id).count()).toBe(2);
   expect(await db.customCatalog.count()).toBe(1);
   expect(onClose).toHaveBeenCalled();
+});
+
+test('machines already at this gym are marked and skipped; the rest import', async () => {
+  const user = userEvent.setup();
+  const g = await addGym('Kamppi');
+  const existing = await saveGymExercise({
+    gymId: g.id,
+    catalogId: 'leg-press',
+    label: 'Technogym',
+    notes: '',
+    loading: { type: 'plate', base: 62, step: 2.5 },
+    hidden: false,
+  });
+  const onImported = vi.fn();
+  render(<ImportMachineSheet gymId={g.id} onClose={() => {}} onImported={onImported} />);
+  await user.click(screen.getByLabelText('Pasted text'));
+  await user.paste(md);
+  const tag = await screen.findByText('Already at this gym');
+  expect(tag.closest('li')).toHaveTextContent('Leg Press — Legs · Plate, sled 62 kg, +2.5');
+  expect(screen.getAllByText('Already at this gym')).toHaveLength(1);
+  expect(screen.queryByText('Nothing new to import')).toBeNull();
+
+  await user.click(screen.getByRole('button', { name: 'Import' }));
+  await vi.waitFor(() => expect(onImported).toHaveBeenCalledTimes(1));
+  const created = onImported.mock.calls[0][0];
+  expect(created).toHaveLength(1);
+  expect(created[0].catalogId).toBe('sled-pull');
+  const mine = await db.gymExercises.where('gymId').equals(g.id).toArray();
+  expect(mine.map((m) => m.id).sort()).toEqual([existing.id, created[0].id].sort());
+});
+
+test('when every machine is already at this gym: "Nothing new to import" and Import is disabled', async () => {
+  const user = userEvent.setup();
+  const g = await addGym('Kamppi');
+  const onImported = vi.fn();
+  const first = render(<ImportMachineSheet gymId={g.id} onClose={() => {}} onImported={onImported} />);
+  await user.click(screen.getByLabelText('Pasted text'));
+  await user.paste(md);
+  await user.click(await screen.findByRole('button', { name: 'Import' }));
+  await vi.waitFor(() => expect(onImported).toHaveBeenCalledTimes(1));
+  first.unmount();
+
+  render(<ImportMachineSheet gymId={g.id} onClose={() => {}} onImported={onImported} />);
+  await user.click(screen.getByLabelText('Pasted text'));
+  await user.paste(md);
+  expect(await screen.findByText('Nothing new to import')).toBeInTheDocument();
+  expect(screen.getAllByText('Already at this gym')).toHaveLength(2);
+  expect(screen.getByRole('button', { name: 'Import' })).toBeDisabled();
+  expect(await db.gymExercises.count()).toBe(2);
 });
 
 test('level stacks are summarised with L', async () => {

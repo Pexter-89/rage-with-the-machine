@@ -1,5 +1,6 @@
 import { CATEGORIES } from '../domain/catalog';
-import type { ParseResult } from '../domain/importMachine';
+import type { ParsedMachine, ParseResult } from '../domain/importMachine';
+import { sameLoading } from '../domain/loading';
 import type { CatalogExercise, Gym, GymExercise, PickerItem } from '../domain/types';
 import { addCustomEntries, getCatalog } from './catalogRepo';
 import { db } from './db';
@@ -66,12 +67,28 @@ export async function saveGymExercise(ge: Omit<GymExercise, 'id'> & { id?: strin
   return saved;
 }
 
-/** Atomic: custom catalogue entries, then one visible GymExercise per machine; any failure adds nothing. */
+const sameMachine = (ge: GymExercise, m: ParsedMachine) =>
+  ge.catalogId === m.catalogId && ge.label === m.label && sameLoading(ge.loading, m.loading);
+
+/** For each parsed machine, whether the gym already has it (same exercise, label and loading; hidden ones count). */
+export async function machinesAlreadyAtGym(gymId: string, machines: ParsedMachine[]): Promise<boolean[]> {
+  const mine = await db.gymExercises.where('gymId').equals(gymId).toArray();
+  return machines.map((m) => mine.some((ge) => sameMachine(ge, m)));
+}
+
+/**
+ * Atomic: skips machines the gym already has, adds the custom catalogue entries the rest need, then one
+ * visible GymExercise per remaining machine. Returns only the created ones; any failure adds nothing.
+ */
 export async function importMachines(gymId: string, parsed: Extract<ParseResult, { ok: true }>): Promise<GymExercise[]> {
   return db.transaction('rw', [db.customCatalog, db.gymExercises], async () => {
-    if (parsed.newExercises.length > 0) await addCustomEntries(parsed.newExercises);
+    const already = await machinesAlreadyAtGym(gymId, parsed.machines);
+    const fresh = parsed.machines.filter((_, i) => !already[i]);
+    const needed = new Set(fresh.map((m) => m.catalogId));
+    const newExercises = parsed.newExercises.filter((e) => needed.has(e.id));
+    if (newExercises.length > 0) await addCustomEntries(newExercises);
     const saved: GymExercise[] = [];
-    for (const m of parsed.machines) {
+    for (const m of fresh) {
       saved.push(
         await saveGymExercise({ gymId, catalogId: m.catalogId, label: m.label, notes: m.notes, loading: m.loading, hidden: false }),
       );

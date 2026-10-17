@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { getCatalog } from '../../db/catalogRepo';
-import { importMachines } from '../../db/gymRepo';
+import { importMachines, machinesAlreadyAtGym } from '../../db/gymRepo';
 import { CATEGORIES } from '../../domain/catalog';
 import { parseMachineFile, type ParseResult } from '../../domain/importMachine';
 import type { CatalogExercise, GymExercise, Loading } from '../../domain/types';
@@ -38,6 +38,8 @@ export default function ImportMachineSheet({ gymId, initialFile, onClose, onImpo
   const [text, setText] = useState('');
   const [result, setResult] = useState<ParseResult | null>(null);
   const [catalog, setCatalog] = useState<CatalogExercise[]>([]);
+  /** Per parsed machine: the gym already has it, so Import skips it. */
+  const [already, setAlready] = useState<boolean[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -55,8 +57,12 @@ export default function ImportMachineSheet({ gymId, initialFile, onClose, onImpo
     try {
       const c = await getCatalog();
       if (mine !== seq.current) return;
+      const parsed = parseMachineFile(next, c);
+      const dup = parsed.ok ? await machinesAlreadyAtGym(gymId, parsed.machines) : [];
+      if (mine !== seq.current) return;
       setCatalog(c);
-      setResult(parseMachineFile(next, c));
+      setAlready(dup);
+      setResult(parsed);
     } catch (e) {
       if (mine === seq.current) setResult({ ok: false, error: oneLine(e) });
     }
@@ -85,8 +91,10 @@ export default function ImportMachineSheet({ gymId, initialFile, onClose, onImpo
     }
   }
 
+  const nothingNew = !!result?.ok && result.machines.every((_, i) => already[i]);
+
   async function doImport() {
-    if (!result?.ok || busy) return;
+    if (!result?.ok || busy || nothingNew) return;
     setBusy(true);
     try {
       const created = await importMachines(gymId, result);
@@ -147,6 +155,7 @@ export default function ImportMachineSheet({ gymId, initialFile, onClose, onImpo
               return (
                 <li key={i} className="row">
                   {`${e?.name ?? m.catalogId} — ${categoryName(e?.category)} · ${loadingSummary(m.loading)}`}
+                  {already[i] && <span className="tag">Already at this gym</span>}
                 </li>
               );
             })}
@@ -159,7 +168,8 @@ export default function ImportMachineSheet({ gymId, initialFile, onClose, onImpo
               {error}
             </p>
           )}
-          <button className="btn btn-ok" disabled={busy} onClick={() => void doImport()}>
+          {nothingNew && <p className="hint">Nothing new to import</p>}
+          <button className="btn btn-ok" disabled={busy || nothingNew} onClick={() => void doImport()}>
             Import
           </button>
         </>

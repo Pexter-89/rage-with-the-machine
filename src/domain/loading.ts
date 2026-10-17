@@ -14,6 +14,21 @@ function range(start: number, max: number, stepAt: (v: number) => number): numbe
   return out;
 }
 
+function deepEqual(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (typeof a !== 'object' || typeof b !== 'object' || a === null || b === null) return false;
+  if (Array.isArray(a) !== Array.isArray(b)) return false;
+  const ra = a as Record<string, unknown>;
+  const rb = b as Record<string, unknown>;
+  const keys = Object.keys(ra);
+  return keys.length === Object.keys(rb).length && keys.every((k) => Object.hasOwn(rb, k) && deepEqual(ra[k], rb[k]));
+}
+
+/** Deep equality of two loading definitions (key order does not matter). */
+export function sameLoading(a: Loading, b: Loading): boolean {
+  return deepEqual(a, b);
+}
+
 /** Ascending list of selectable weights for a loading definition. */
 export function wheelValues(l: Loading): number[] {
   switch (l.type) {
