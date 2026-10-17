@@ -1,4 +1,4 @@
-import { navigate, useRoute } from './router';
+import { useRoute } from './router';
 import ExerciseEdit from './screens/ExerciseEdit';
 import GymDetail from './screens/GymDetail';
 import Gyms from './screens/Gyms';
@@ -7,19 +7,7 @@ import Logging from './screens/Logging';
 import Picker from './screens/Picker';
 import Progress from './screens/Progress';
 import Session from './screens/Session';
-
-function Placeholder({ name }: { name: string }) {
-  return (
-    <main className="screen">
-      <header className="bar">
-        <button className="btn btn-ghost btn-small" onClick={() => navigate({ name: 'home' })}>
-          ‹ Home
-        </button>
-        <h1 className="title">{name}</h1>
-      </header>
-    </main>
-  );
-}
+import Settings from './screens/Settings';
 
 export default function App() {
   const route = useRoute();
@@ -34,6 +22,8 @@ export default function App() {
       return <Picker sessionId={route.sessionId} />;
     case 'log':
       return <Logging key={`${route.sessionId}/${route.key}`} sessionId={route.sessionId} itemKey={route.key} />;
+    case 'settings':
+      return <Settings />;
     case 'progress':
       return <Progress />;
     case 'gym':
@@ -47,7 +37,5 @@ export default function App() {
           catalogId={route.catalogId}
         />
       );
-    default:
-      return <Placeholder name={route.name} />;
   }
 }
