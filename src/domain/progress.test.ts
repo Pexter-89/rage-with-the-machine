@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import type { CatalogExercise, SetEntry } from './types';
-import { buildSeries, buildTableRows, gymColor } from './progress';
+import { buildSeries, buildSessionList, buildTableRows, gymColor } from './progress';
 
 let n = 0;
 const mkSet = (p: Partial<SetEntry> = {}): SetEntry => ({
@@ -85,5 +85,24 @@ describe('gymColor', () => {
     expect(colors.size).toBe(8);
     expect(gymColor(8)).toBe(gymColor(0));
     expect(gymColor(0)).toMatch(/^#[0-9a-f]{6}$/i);
+  });
+});
+
+describe('buildSessionList', () => {
+  const cat: CatalogExercise[] = [
+    { ...free, id: 'x', name: 'Xer' },
+    { ...free, id: 'y', name: 'Yer' },
+  ];
+  test('newest first, earliest completedAt as date, distinct names in first-logged order', () => {
+    const sets = [
+      mkSet({ sessionId: 'a', gymId: 'g1', catalogId: 'y', completedAt: 1100, order: 1 }),
+      mkSet({ sessionId: 'a', gymId: 'g1', catalogId: 'x', completedAt: 1000, order: 0 }),
+      mkSet({ sessionId: 'a', gymId: 'g1', catalogId: 'x', completedAt: 1200, order: 2 }),
+      mkSet({ sessionId: 'b', gymId: 'g2', catalogId: 'y', completedAt: 5000 }),
+    ];
+    expect(buildSessionList(sets, cat)).toEqual([
+      { sessionId: 'b', date: 5000, gymId: 'g2', exercises: ['Yer'] },
+      { sessionId: 'a', date: 1000, gymId: 'g1', exercises: ['Xer', 'Yer'] },
+    ]);
   });
 });

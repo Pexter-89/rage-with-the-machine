@@ -494,3 +494,101 @@ textarea {
 .preview .row {
   flex-direction: row;
 }
+
+/* ---- progress ---- */
+.slicers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.slicers .field {
+  flex: 1 1 30%;
+  min-width: 96px;
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.slicers select {
+  min-width: 0;
+  color: var(--text);
+  font-size: 0.9rem;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 44px;
+}
+
+.chip-on {
+  background: var(--accent);
+  color: var(--accent-text);
+}
+
+.dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin-right: 6px;
+  border-radius: 50%;
+}
+
+.chip .dot {
+  margin-right: 0;
+}
+
+.segmented {
+  display: flex;
+  gap: 4px;
+}
+
+.segmented .btn {
+  flex: 1;
+}
+
+.segmented .btn[aria-pressed='true'] {
+  background: var(--accent);
+  color: var(--accent-text);
+}
+
+.chart-box {
+  position: relative;
+  flex: none;
+  height: 220px;
+}
+
+.table-wrap {
+  overflow-x: auto;
+}
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.data-table th,
+.data-table td {
+  padding: 8px 6px;
+  text-align: left;
+  vertical-align: top;
+  border-bottom: 1px solid var(--surface);
+}
+
+.data-table th {
+  color: var(--muted);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.data-table td:first-child {
+  white-space: nowrap;
+}

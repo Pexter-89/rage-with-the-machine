@@ -5,6 +5,7 @@ import Gyms from './screens/Gyms';
 import Home from './screens/Home';
 import Logging from './screens/Logging';
 import Picker from './screens/Picker';
+import Progress from './screens/Progress';
 import Session from './screens/Session';
 
 function Placeholder({ name }: { name: string }) {
@@ -33,6 +34,8 @@ export default function App() {
       return <Picker sessionId={route.sessionId} />;
     case 'log':
       return <Logging key={`${route.sessionId}/${route.key}`} sessionId={route.sessionId} itemKey={route.key} />;
+    case 'progress':
+      return <Progress />;
     case 'gym':
       return <GymDetail key={route.gymId} gymId={route.gymId} />;
     case 'exercise':

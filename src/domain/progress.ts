@@ -88,3 +88,20 @@ const GYM_COLORS = ['#4f9dff', '#ff8a3d', '#3ecf8e', '#e5539b', '#f2c94c', '#9b7
 export function gymColor(index: number): string {
   return GYM_COLORS[((index % GYM_COLORS.length) + GYM_COLORS.length) % GYM_COLORS.length];
 }
+
+export function buildSessionList(
+  sets: SetEntry[],
+  catalog: CatalogExercise[],
+): { sessionId: string; date: number; gymId: string; exercises: string[] }[] {
+  const nameById = new Map(catalog.map((c) => [c.id, c.name]));
+  return groupBySession(sets)
+    .map((g) => {
+      const names: string[] = [];
+      for (const s of g.sets) {
+        const n = nameById.get(s.catalogId) ?? s.catalogId;
+        if (!names.includes(n)) names.push(n);
+      }
+      return { sessionId: g.sessionId, date: g.date, gymId: g.gymId, exercises: names };
+    })
+    .sort((a, b) => b.date - a.date);
+}
