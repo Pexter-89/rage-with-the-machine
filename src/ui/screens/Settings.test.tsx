@@ -25,7 +25,7 @@ test('theme change persists and sets data-theme', async () => {
   await user.click(await screen.findByRole('button', { name: 'Light' }));
   await vi.waitFor(() => expect(document.documentElement.dataset.theme).toBe('light'));
   await vi.waitFor(async () => expect((await getSettings()).theme).toBe('light'));
-  expect(screen.getByRole('button', { name: 'Light' })).toHaveAttribute('aria-pressed', 'true');
+  await vi.waitFor(() => expect(screen.getByRole('button', { name: 'Light' })).toHaveAttribute('aria-pressed', 'true'));
   await user.click(screen.getByRole('button', { name: 'Dark' }));
   await vi.waitFor(() => expect(document.documentElement.dataset.theme).toBe('dark'));
 });
