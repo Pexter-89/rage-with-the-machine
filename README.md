@@ -4,12 +4,12 @@ A single-user, offline-first gym logging app (PWA). Log sets and sessions per ma
 
 ## Install on your phone
 
-The URL is `https://<your-github-username>.github.io/rage-with-the-machine/`.
+The URL is <https://pexter-89.github.io/rage-with-the-machine/>.
 
 - **iPhone:** open the URL in Safari, then Share, then Add to Home Screen.
 - **Android:** open the URL in Chrome, then menu, then Install app (or Add to Home screen).
 
-The URL must not change once you start logging, because your data is tied to it.
+The URL must not change once you start logging, because your data is tied to it. Renaming the repo or the GitHub account changes the URL, and the app then starts empty (restore from a backup). The repo name also sets the base path in `.github/workflows/deploy.yml` (`BASE_PATH: /rage-with-the-machine/`), so a rename must update that too.
 
 ## Setting up a gym from photos
 
@@ -35,6 +35,6 @@ npm run generate-pwa-assets
 
 One-time GitHub setup:
 
-1. Create a public repo named `rage-with-the-machine` on your GitHub account.
+1. Create a public repo named `rage-with-the-machine` under the [Pexter-89](https://github.com/Pexter-89) account.
 2. Settings, then Pages, then Source: GitHub Actions.
 3. Push `main`. The workflow in `.github/workflows/deploy.yml` tests, builds with the right base path and deploys.
