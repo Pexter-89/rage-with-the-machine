@@ -281,3 +281,95 @@ input {
   font-weight: 700;
   text-align: center;
 }
+
+/* ---- session ---- */
+.session {
+  height: 100dvh;
+}
+
+.btn-quiet {
+  min-width: 44px;
+  background: transparent;
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.session-cards {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  width: 100%;
+  text-align: left;
+}
+
+.card-name {
+  font-weight: 700;
+}
+
+.card-label,
+.card-summary {
+  color: var(--muted);
+  font-size: 0.85rem;
+  font-weight: 400;
+}
+
+/* ---- picker ---- */
+.picker {
+  height: 100dvh;
+}
+
+.columns {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  overscroll-behavior-x: contain;
+}
+
+.column {
+  flex: 0 0 33vw;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  scroll-snap-align: start;
+}
+
+.column-title {
+  margin: 0;
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-align: center;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.column-items {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.pick-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  flex: none;
+  text-align: left;
+  font-size: 0.85rem;
+  overflow-wrap: anywhere;
+}

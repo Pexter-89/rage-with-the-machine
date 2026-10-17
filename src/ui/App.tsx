@@ -1,6 +1,8 @@
 import { navigate, useRoute } from './router';
 import Gyms from './screens/Gyms';
 import Home from './screens/Home';
+import Picker from './screens/Picker';
+import Session from './screens/Session';
 
 function Placeholder({ name }: { name: string }) {
   return (
@@ -22,6 +24,10 @@ export default function App() {
       return <Home />;
     case 'gyms':
       return <Gyms />;
+    case 'session':
+      return <Session sessionId={route.sessionId} />;
+    case 'pick':
+      return <Picker sessionId={route.sessionId} />;
     default:
       return <Placeholder name={route.name} />;
   }
