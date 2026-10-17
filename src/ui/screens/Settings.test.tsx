@@ -7,14 +7,14 @@ import Settings from './Settings';
 
 vi.mock('../lib/share', async (orig) => ({
   ...(await orig<typeof import('../lib/share')>()),
-  shareOrDownload: vi.fn(async () => {}),
+  shareOrDownload: vi.fn(async () => true),
 }));
 
 beforeEach(async () => {
   await resetDb();
   location.hash = '';
   vi.mocked(shareOrDownload).mockReset();
-  vi.mocked(shareOrDownload).mockImplementation(async () => {});
+  vi.mocked(shareOrDownload).mockImplementation(async () => true);
 });
 
 const pad = (n: number) => String(n).padStart(2, '0');
@@ -52,6 +52,19 @@ test('export backup failure shows inline error and does not update last backup',
   await user.click(await screen.findByRole('button', { name: 'Export backup' }));
   expect(await screen.findByText('boom')).toBeInTheDocument();
   expect((await getSettings()).lastBackupAt).toBeNull();
+});
+
+test('a cancelled backup share does not stamp the last backup', async () => {
+  const user = userEvent.setup();
+  vi.mocked(shareOrDownload).mockResolvedValue(false);
+  render(<Settings />);
+  await user.click(await screen.findByRole('button', { name: 'Export backup' }));
+  await vi.waitFor(() => expect(shareOrDownload).toHaveBeenCalledTimes(1));
+  // Let any stamping write land before checking it did not happen.
+  await new Promise((r) => setTimeout(r, 50));
+  expect((await getSettings()).lastBackupAt).toBeNull();
+  expect(screen.getByText('Last backup: never')).toBeInTheDocument();
+  expect(screen.queryByRole('alert')).toBeNull();
 });
 
 test('export CSV uses BOM, csv type and dated filename', async () => {

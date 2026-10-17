@@ -72,8 +72,10 @@ export default function Settings() {
       const now = Date.now();
       const file = await exportBackup(now);
       const blob = new Blob([JSON.stringify(file, null, 2)], { type: 'application/json' });
-      await shareOrDownload(`rwtm-backup-${localDate(now)}.json`, blob);
-      await updateSettings({ lastBackupAt: Date.now() });
+      // Only a completed share or download counts as a backup; a cancelled sheet does not.
+      if (await shareOrDownload(`rwtm-backup-${localDate(now)}.json`, blob)) {
+        await updateSettings({ lastBackupAt: Date.now() });
+      }
     } catch (e) {
       fail(e);
     }

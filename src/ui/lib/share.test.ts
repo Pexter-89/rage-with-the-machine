@@ -12,16 +12,16 @@ test('readFileText reads the file as text', async () => {
 test('shareOrDownload uses navigator.share when files can be shared', async () => {
   const share = vi.fn().mockResolvedValue(undefined);
   vi.stubGlobal('navigator', { canShare: () => true, share });
-  await shareOrDownload('x.csv', new Blob(['a'], { type: 'text/csv' }));
+  await expect(shareOrDownload('x.csv', new Blob(['a'], { type: 'text/csv' }))).resolves.toBe(true);
   const arg = share.mock.calls[0][0];
   expect(arg.files[0].name).toBe('x.csv');
   expect(arg.files[0].type).toBe('text/csv');
 });
 
-test('shareOrDownload swallows AbortError but rethrows others', async () => {
+test('shareOrDownload returns false when the user cancels (AbortError) but rethrows others', async () => {
   const abort = Object.assign(new Error('cancel'), { name: 'AbortError' });
   vi.stubGlobal('navigator', { canShare: () => true, share: vi.fn().mockRejectedValue(abort) });
-  await expect(shareOrDownload('x.csv', new Blob(['a']))).resolves.toBeUndefined();
+  await expect(shareOrDownload('x.csv', new Blob(['a']))).resolves.toBe(false);
   vi.stubGlobal('navigator', { canShare: () => true, share: vi.fn().mockRejectedValue(new Error('boom')) });
   await expect(shareOrDownload('x.csv', new Blob(['a']))).rejects.toThrow('boom');
 });
@@ -36,7 +36,7 @@ test('shareOrDownload falls back to a download link and revokes the URL', async 
   });
   vi.useFakeTimers();
   try {
-    await shareOrDownload('x.csv', new Blob(['a']));
+    expect(await shareOrDownload('x.csv', new Blob(['a']))).toBe(true);
     expect(click).toHaveBeenCalledTimes(1);
     expect(URL.revokeObjectURL).not.toHaveBeenCalled();
     vi.runAllTimers();
@@ -52,6 +52,6 @@ test('shareOrDownload falls back to download when share is NotAllowedError', asy
   URL.createObjectURL = vi.fn(() => 'blob:abc');
   URL.revokeObjectURL = vi.fn();
   const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
-  await shareOrDownload('x.csv', new Blob(['a']));
+  expect(await shareOrDownload('x.csv', new Blob(['a']))).toBe(true);
   expect(click).toHaveBeenCalledTimes(1);
 });
