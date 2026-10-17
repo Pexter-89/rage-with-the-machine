@@ -160,15 +160,28 @@ test('auto-close minutes clamps to 5–240 and saves', async () => {
   await user.type(input, '1000');
   await user.tab();
   await vi.waitFor(async () => expect((await getSettings()).autoCloseMinutes).toBe(240));
-  expect(input.value).toBe('240');
+  await vi.waitFor(() => expect(input.value).toBe('240'));
   await user.clear(input);
   await user.type(input, '2{Enter}');
   await vi.waitFor(async () => expect((await getSettings()).autoCloseMinutes).toBe(5));
-  expect(input.value).toBe('5');
+  await vi.waitFor(() => expect(input.value).toBe('5'));
   await user.clear(input);
   await user.tab();
   expect((await getSettings()).autoCloseMinutes).toBe(5);
-  expect(input.value).toBe('5');
+  await vi.waitFor(() => expect(input.value).toBe('5'));
+});
+
+test('a committed auto-close value never flashes the old value before the live settings catch up', async () => {
+  const user = userEvent.setup();
+  render(<Settings />);
+  const input = (await screen.findByLabelText('Auto-close after (minutes)')) as HTMLInputElement;
+  await user.clear(input);
+  await user.type(input, '45');
+  await user.tab();
+  // Synchronously after blur: the write has not landed yet, the field must still show the new value.
+  expect(input.value).toBe('45');
+  await vi.waitFor(async () => expect((await getSettings()).autoCloseMinutes).toBe(45));
+  await vi.waitFor(() => expect(input.value).toBe('45'));
 });
 
 test('Home button navigates home', async () => {

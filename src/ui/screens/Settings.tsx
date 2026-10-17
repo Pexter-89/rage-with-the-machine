@@ -49,6 +49,14 @@ export default function Settings() {
 
   useEffect(() => () => clearTimeout(copiedTimer.current), []);
 
+  // A committed value stays on screen until the live settings show it, so the field never flashes the old value.
+  // Functional update: a keystroke queued before this effect runs must win over the clear.
+  const liveMinutes = settings?.autoCloseMinutes;
+  useEffect(() => {
+    if (liveMinutes === undefined) return;
+    setMinutes((m) => (m === String(liveMinutes) ? null : m));
+  }, [liveMinutes]);
+
   if (!settings) return <main className="screen" />;
 
   const fail = (e: unknown) => setMessage({ text: e instanceof Error ? e.message : String(e), error: true });
@@ -126,10 +134,22 @@ export default function Settings() {
   async function commitMinutes() {
     if (minutes === null) return;
     const n = Math.round(Number(minutes));
-    setMinutes(null);
-    if (minutes.trim() === '' || !Number.isFinite(n)) return;
+    if (minutes.trim() === '' || !Number.isFinite(n)) {
+      setMinutes(null);
+      return;
+    }
     const clamped = Math.min(MAX_CLOSE, Math.max(MIN_CLOSE, n));
-    if (clamped !== settings!.autoCloseMinutes) await updateSettings({ autoCloseMinutes: clamped });
+    if (clamped === settings!.autoCloseMinutes) {
+      setMinutes(null);
+      return;
+    }
+    setMinutes(String(clamped));
+    try {
+      await updateSettings({ autoCloseMinutes: clamped });
+    } catch (e) {
+      setMinutes(null);
+      fail(e);
+    }
   }
 
   return (

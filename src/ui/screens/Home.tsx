@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../../db/db';
 import { listGyms } from '../../db/gymRepo';
-import { closeStaleSessions, getOpenSession, startSession } from '../../db/sessionRepo';
+import { closeStaleSessions, getOpenSession, isResumable, startOrResumeSession } from '../../db/sessionRepo';
 import { getSettings } from '../../db/settingsRepo';
 import { navigate } from '../router';
 
@@ -23,16 +23,16 @@ export default function Home() {
 
   const gyms = useLiveQuery(() => listGyms(), []);
   const open = useLiveQuery(async () => {
-    const s = await getOpenSession();
-    if (!s) return null;
+    const [s, settings] = await Promise.all([getOpenSession(), getSettings()]);
+    // Judge staleness here too: this query may still hold its pre-sweep result when `ready` flips.
+    if (!s || !isResumable(s, Date.now(), settings.autoCloseMinutes)) return null;
     return { session: s, gym: await db.gyms.get(s.gymId) };
   }, []);
 
   async function start(gymId: string) {
     const settings = await getSettings();
-    const now = Date.now();
-    await closeStaleSessions(now, settings.autoCloseMinutes);
-    const s = await startSession(gymId, now);
+    // The open session's own gym resumes it (e.g. after iOS killed the app mid-workout); another gym starts afresh.
+    const s = await startOrResumeSession(gymId, Date.now(), settings.autoCloseMinutes);
     navigate({ name: 'session', sessionId: s.id });
   }
 

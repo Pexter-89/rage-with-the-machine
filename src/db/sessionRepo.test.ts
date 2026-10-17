@@ -13,6 +13,7 @@ import {
   recomputePlateHistory,
   sessionExercises,
   setsForItem,
+  startOrResumeSession,
   startSession,
   updateSet,
 } from './sessionRepo';
@@ -94,6 +95,35 @@ describe('sessions', () => {
     const b = await startSession(g.id, T0 + 10_000);
     await finishSession(b.id, T0 + 11_000);
     expect(await db.sessions.get(b.id)).toBeUndefined();
+  });
+});
+
+describe('startOrResumeSession', () => {
+  test('the open session at the same gym is resumed, not split', async () => {
+    const a = await startSession(g.id, T0);
+    await addSet(a.id, item, 62, 10, T0 + 1000);
+    const again = await startOrResumeSession(g.id, T0 + 5 * MIN, 30);
+    expect(again.id).toBe(a.id);
+    expect(await db.sessions.count()).toBe(1);
+    expect((await db.sessions.get(a.id))!.endedAt).toBeNull();
+  });
+
+  test('another gym finishes the open session and starts a new one', async () => {
+    const other = await addGym('Other');
+    const a = await startSession(g.id, T0);
+    await addSet(a.id, item, 62, 10, T0 + 1000);
+    const b = await startOrResumeSession(other.id, T0 + 5 * MIN, 30);
+    expect(b.id).not.toBe(a.id);
+    expect(b.gymId).toBe(other.id);
+    expect((await db.sessions.get(a.id))!.endedAt).toBe(T0 + 5 * MIN);
+  });
+
+  test('a timed-out session at the same gym is closed at its last activity and a new one starts', async () => {
+    const a = await startSession(g.id, T0);
+    await addSet(a.id, item, 62, 10, T0 + 1000);
+    const b = await startOrResumeSession(g.id, T0 + 1000 + 31 * MIN, 30);
+    expect(b.id).not.toBe(a.id);
+    expect((await db.sessions.get(a.id))!.endedAt).toBe(T0 + 1000);
   });
 });
 

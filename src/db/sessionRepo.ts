@@ -30,6 +30,11 @@ async function closeOrDelete(id: string, endedAt: number): Promise<void> {
   }
 }
 
+/** True for an open session that the auto-close sweep would keep open at `now`. */
+export function isResumable(s: Session, now: number, timeoutMin: number): boolean {
+  return s.endedAt === null && now - s.lastActivityAt <= timeoutMin * 60_000;
+}
+
 export async function getOpenSession(): Promise<Session | null> {
   return (await openSessions().first()) ?? null;
 }
@@ -40,6 +45,19 @@ export async function startSession(gymId: string, now: number): Promise<Session>
     const session: Session = { id: crypto.randomUUID(), gymId, startedAt: now, endedAt: null, lastActivityAt: now };
     await db.sessions.add(session);
     return session;
+  });
+}
+
+/**
+ * A gym tap on Home: closes timed-out sessions, then resumes the open session when it is at `gymId`,
+ * otherwise finishes it and starts a new one. One transaction, so the check and the start cannot interleave.
+ */
+export async function startOrResumeSession(gymId: string, now: number, timeoutMin: number): Promise<Session> {
+  return db.transaction('rw', db.sessions, db.sets, async () => {
+    await closeStaleSessions(now, timeoutMin);
+    const open = await getOpenSession();
+    if (open && open.gymId === gymId) return open;
+    return startSession(gymId, now);
   });
 }
 
@@ -54,7 +72,7 @@ export async function finishSession(id: string, now: number): Promise<void> {
 export async function closeStaleSessions(now: number, timeoutMin: number): Promise<void> {
   await db.transaction('rw', db.sessions, db.sets, async () => {
     for (const s of await openSessions().toArray()) {
-      if (now - s.lastActivityAt > timeoutMin * 60_000) await closeOrDelete(s.id, s.lastActivityAt);
+      if (!isResumable(s, now, timeoutMin)) await closeOrDelete(s.id, s.lastActivityAt);
     }
   });
 }
