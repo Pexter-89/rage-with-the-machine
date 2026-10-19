@@ -6,6 +6,8 @@ import {
   SessionEndedError,
   addSet,
   closeStaleSessions,
+  deleteExerciseSets,
+  deleteSession,
   deleteSet,
   finishSession,
   getLastTime,
@@ -36,7 +38,7 @@ async function makeItem(gymId: string, loading: PickerItem['loading'], label = '
 
 async function freeItem(gymId: string): Promise<PickerItem> {
   const items = await availableExercises(gymId, await getCatalog());
-  return items.find((i) => i.gymExerciseId === null)!;
+  return items.find((i) => i.gymExerciseId === null && i.loading.type === 'free')!;
 }
 
 beforeEach(async () => {
@@ -338,5 +340,31 @@ describe('recomputePlateHistory', () => {
     expect(changed).toBe(1);
     expect(await db.sets.get(a.id)).toMatchObject({ weight: 55, baseWeight: 55 });
     expect(await db.sets.get(b.id)).toMatchObject({ weight: 65, baseWeight: 60 });
+  });
+});
+
+describe('deleting', () => {
+  test('deleteSession removes the session and all its sets', async () => {
+    const s = await startSession(g.id, T0);
+    await addSet(s.id, item, 62, 10, T0 + 1);
+    await addSet(s.id, item, 62, 10, T0 + 2);
+    const other = await startSession(g.id, T0 + 10); // finishes s
+    await addSet(other.id, item, 62, 10, T0 + 20);
+    await deleteSession(s.id);
+    expect(await db.sessions.get(s.id)).toBeUndefined();
+    expect((await db.sets.toArray()).map((r) => r.sessionId)).toEqual([other.id]);
+  });
+
+  test('deleteExerciseSets removes one exercise from an open session and refuses an ended one', async () => {
+    const s = await startSession(g.id, T0);
+    const f = await freeItem(g.id);
+    await addSet(s.id, item, 62, 10, T0 + 1);
+    await addSet(s.id, item, 62, 10, T0 + 2);
+    await addSet(s.id, f, 10, 10, T0 + 3);
+    await deleteExerciseSets(s.id, item.key, T0 + 4);
+    expect((await db.sets.toArray()).map((r) => r.catalogId)).toEqual([f.catalogId]);
+    expect((await db.sessions.get(s.id))!.lastActivityAt).toBe(T0 + 4);
+    await finishSession(s.id, T0 + 5);
+    await expect(deleteExerciseSets(s.id, 'c:' + f.catalogId, T0 + 6)).rejects.toBeInstanceOf(SessionEndedError);
   });
 });

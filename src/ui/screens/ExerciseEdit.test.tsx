@@ -162,7 +162,10 @@ test('free exercise override edits start/step/max and rejects start >= max', asy
   const user = userEvent.setup();
   const g = await addGym('K');
   render(<ExerciseEdit gymId={g.id} geId="new" catalogId="barbell-bench-press" />);
-  const start = await screen.findByLabelText('Start (kg)');
+  await user.selectOptions(await screen.findByLabelText('Loading type'), 'Preset intervals');
+  const start = screen.getByLabelText('Start (kg)');
+  await user.type(screen.getByLabelText('Step (kg)'), '2.5');
+  await user.type(screen.getByLabelText('Max (kg)'), '300');
   await user.clear(start);
   await user.type(start, '300');
   await user.click(screen.getByRole('button', { name: 'Save' }));
@@ -219,4 +222,29 @@ test('a machine with sets offers Hide instead of Delete; hiding removes it from 
   const { availableExercises } = await import('../../db/gymRepo');
   const { getCatalog } = await import('../../db/catalogRepo');
   expect((await availableExercises(g.id, await getCatalog())).some((i) => i.gymExerciseId === ge.id)).toBe(false);
+});
+
+test('a machine can be set to plates one by one', async () => {
+  const user = userEvent.setup();
+  const g = await addGym('K');
+  render(<ExerciseEdit gymId={g.id} geId="new" catalogId="leg-press" />);
+  await user.selectOptions(await screen.findByLabelText('Loading type'), 'Plates, one by one');
+  await user.type(screen.getByLabelText('Sled weight (kg)'), '62');
+  const plates = screen.getByLabelText('Plates (kg)');
+  await user.clear(plates);
+  await user.type(plates, '25 20 10 5 2,5 1,25');
+  await user.click(screen.getByRole('button', { name: 'One side' }));
+  await user.click(screen.getByRole('button', { name: 'Save' }));
+  await vi.waitFor(async () => expect(await db.gymExercises.count()).toBe(1));
+  expect((await db.gymExercises.toArray())[0].loading).toEqual({
+    type: 'plates', base: 62, plates: [1.25, 2.5, 5, 10, 20, 25], sides: 1,
+  });
+});
+
+test('a barbell defaults to plates on a 20 kg bar', async () => {
+  const g = await addGym('K');
+  render(<ExerciseEdit gymId={g.id} geId="new" catalogId="deadlift" />);
+  expect(await screen.findByLabelText('Loading type')).toHaveDisplayValue('Plates, one by one');
+  expect(screen.getByLabelText('Bar weight (kg)')).toHaveValue('20');
+  expect(screen.getByLabelText('Plates (kg)')).toHaveValue('2.5 5 10 15 20 25');
 });

@@ -3,12 +3,14 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { applyTheme } from '../../bootstrap';
 import { buildCsvRows, exportBackup, restoreBackup, validateBackup } from '../../db/backup';
 import { getCatalog } from '../../db/catalogRepo';
+import { addDemoData, hasDemoData, removeDemoData } from '../../db/demo';
 import { getSettings, updateSettings } from '../../db/settingsRepo';
 import { setsToCsv } from '../../domain/csv';
 import { buildClaudePrompt } from '../../domain/claudePrompt';
 import type { Settings as SettingsData } from '../../domain/types';
 import { readFileText, shareOrDownload } from '../lib/share';
-import { navigate } from '../router';
+import ConfirmSheet from '../components/ConfirmSheet';
+import TopBar from '../components/TopBar';
 
 const THEMES: { id: SettingsData['theme']; label: string }[] = [
   { id: 'system', label: 'System' },
@@ -40,6 +42,8 @@ function lastBackupText(at: number | null, now: number): string {
 
 export default function Settings() {
   const settings = useLiveQuery(getSettings, []);
+  const demo = useLiveQuery(hasDemoData, []);
+  const [confirmDemo, setConfirmDemo] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const copiedTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const [message, setMessage] = useState<{ text: string; error: boolean } | null>(null);
@@ -57,7 +61,12 @@ export default function Settings() {
     setMinutes((m) => (m === String(liveMinutes) ? null : m));
   }, [liveMinutes]);
 
-  if (!settings) return <main className="screen" />;
+  if (!settings)
+    return (
+      <main className="screen">
+        <TopBar route={{ name: 'settings' }} title="Settings" />
+      </main>
+    );
 
   const fail = (e: unknown) => setMessage({ text: e instanceof Error ? e.message : String(e), error: true });
 
@@ -133,6 +142,16 @@ export default function Settings() {
     copiedTimer.current = setTimeout(() => setCopied(false), 2000);
   }
 
+  async function loadDemo() {
+    setMessage(null);
+    try {
+      const n = await addDemoData(Date.now());
+      setMessage({ text: `Demo data loaded: 2 demo gyms, ${n} sessions`, error: false });
+    } catch (e) {
+      fail(e);
+    }
+  }
+
   async function commitMinutes() {
     if (minutes === null) return;
     const n = Math.round(Number(minutes));
@@ -156,9 +175,7 @@ export default function Settings() {
 
   return (
     <main className="screen">
-      <header className="bar">
-        <h1 className="title">Settings</h1>
-      </header>
+      <TopBar route={{ name: 'settings' }} title="Settings" />
 
       <div className="field">
         <span>Theme</span>
@@ -239,17 +256,39 @@ export default function Settings() {
         </li>
       </ul>
 
+      <ul className="list">
+        <li className="row">
+          {demo ? (
+            <button className="btn btn-ghost" onClick={() => setConfirmDemo(true)}>
+              Remove demo data
+            </button>
+          ) : (
+            <button className="btn btn-ghost" onClick={() => void loadDemo()}>
+              Load demo data
+            </button>
+          )}
+          <p className="hint">
+            Two demo gyms with five months of made-up workouts, to try out Progress. Your own data is not touched.
+          </p>
+        </li>
+      </ul>
+
       {message && (
         <p className={message.error ? 'error' : 'hint'} role={message.error ? 'alert' : 'status'}>
           {message.text}
         </p>
       )}
 
-      <div className="bottom-actions">
-        <button className="btn btn-ghost" onClick={() => navigate({ name: 'home' })}>
-          ‹ Home
-        </button>
-      </div>
+      <ConfirmSheet
+        title="Remove demo data?"
+        message={confirmDemo ? 'The demo gyms and everything logged at them will be deleted.' : null}
+        confirmLabel="Remove"
+        onConfirm={async () => {
+          await removeDemoData();
+          setMessage({ text: 'Demo data removed', error: false });
+        }}
+        onClose={() => setConfirmDemo(false)}
+      />
     </main>
   );
 }

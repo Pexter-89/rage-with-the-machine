@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { addGym, setGymArchived } from '../../db/gymRepo';
 import { db, resetDb } from '../../db/db';
@@ -103,4 +103,20 @@ test('a timed-out session is not offered for resume even before the sweep has cl
   await screen.findByRole('button', { name: /^▶ Kamppi/ });
   expect((await db.sessions.get(s.id))?.endedAt).toBeNull();
   expect(screen.queryByRole('button', { name: /Resume/ })).toBeNull();
+});
+
+test('the ✕ on the resume button deletes the open session after confirming', async () => {
+  const user = userEvent.setup();
+  const g = await addGym('Kamppi');
+  const s = await startSession(g.id, Date.now());
+  render(<Home />);
+  await user.click(await screen.findByRole('button', { name: 'Delete session' }));
+  const dialog = await screen.findByRole('dialog', { name: 'Delete session?' });
+  await user.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+  expect(await db.sessions.get(s.id)).toBeDefined();
+
+  await user.click(screen.getByRole('button', { name: 'Delete session' }));
+  await user.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Delete' }));
+  await vi.waitFor(async () => expect(await db.sessions.get(s.id)).toBeUndefined());
+  await vi.waitFor(() => expect(screen.queryByRole('button', { name: /Resume/ })).toBeNull());
 });

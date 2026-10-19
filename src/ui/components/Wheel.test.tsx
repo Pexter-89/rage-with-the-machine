@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { parseWeightInput } from '../../domain/loading';
-import Wheel, { indexFromScroll } from './Wheel';
+import Wheel, { ITEM_HEIGHT, indexFromScroll } from './Wheel';
 
 const setup = (value = 62, onChange = vi.fn(), values = [60, 62, 64]) => {
   render(
@@ -83,7 +83,7 @@ describe('scroll settling', () => {
     let top = 0;
     Object.defineProperty(el, 'scrollTop', { get: () => top, set: (v: number) => (top = v), configurable: true });
     const scrollTo = (row: number) => {
-      top = row * 44;
+      top = row * ITEM_HEIGHT;
       fireEvent.scroll(el);
     };
     return { el, onChange, scrollTo };

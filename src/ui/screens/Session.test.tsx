@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { addGym, saveGymExercise } from '../../db/gymRepo';
 import { db, resetDb } from '../../db/db';
@@ -78,7 +78,7 @@ test('Session lists logged exercises with summary "2 sets · 8–10 reps · 62�
     [72, 8],
   ]);
   render(<Session sessionId={s.id} />);
-  const card = await screen.findByRole('button', { name: /Leg Press/ });
+  const card = await screen.findByRole('button', { name: /^Leg Press/ });
   expect(card).toHaveTextContent('Technogym');
   expect(card).toHaveTextContent('2 sets · 8–10 reps · 62–72 kg');
   await userEvent.click(card);
@@ -99,4 +99,20 @@ test('an ended or missing session redirects home', async () => {
   location.hash = `#/session/${s.id}`;
   render(<Session sessionId={s.id} />);
   await vi.waitFor(() => expect(location.hash).toBe('#/'));
+});
+
+test('the ✕ on a logged exercise deletes its sets from the session after confirming', async () => {
+  const user = userEvent.setup();
+  const { g, s } = await seed();
+  const ge = await saveGymExercise({
+    gymId: g.id, catalogId: 'leg-press', label: '', notes: '', loading: { type: 'stack', weights: [62, 72] }, hidden: false,
+  });
+  await addSets(s.id, g.id, ge.id, [[62, 10], [72, 8]]);
+  render(<Session sessionId={s.id} />);
+  await user.click(await screen.findByRole('button', { name: 'Delete Leg Press sets' }));
+  const dialog = await screen.findByRole('dialog', { name: 'Delete exercise?' });
+  expect(dialog).toHaveTextContent('Leg Press: delete its 2 sets from this session');
+  await user.click(within(dialog).getByRole('button', { name: 'Delete' }));
+  await vi.waitFor(async () => expect(await db.sets.count()).toBe(0));
+  await vi.waitFor(() => expect(screen.queryByRole('button', { name: /^Leg Press/ })).toBeNull());
 });

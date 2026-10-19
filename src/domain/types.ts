@@ -1,9 +1,13 @@
 export type Category = 'legs' | 'chest' | 'back' | 'shoulders' | 'arms' | 'core' | 'fullbody';
 export type Kind = 'machine' | 'free' | 'bodyweight';
+/** What the exercise is done with; drives the picker icon. Defaults from `kind` (see `equipmentOf`). */
+export type Equipment = 'machine' | 'barbell' | 'dumbbell' | 'kettlebell' | 'band' | 'bodyweight';
 export type Unit = 'kg' | 'level';
 export type Loading =
   | { type: 'stack'; weights: number[]; unit?: Unit } // unit default 'kg'
   | { type: 'plate'; base: number; step: number }
+  // Loaded plate by plate: `base` is the bar or sled, each plate goes on `sides` sides (2 = a pair per tap).
+  | { type: 'plates'; base: number; plates: number[]; sides: 1 | 2 }
   | { type: 'free'; start: number; step: number; max: number; bigStepFrom?: number; bigStep?: number }
   | { type: 'bodyweight'; step: number; max: number };
 export interface CatalogExercise {
@@ -11,6 +15,7 @@ export interface CatalogExercise {
   name: string;
   category: Category;
   kind: Kind;
+  equipment?: Equipment;
   unilateral?: boolean;
   assisted?: boolean;
   defaultLoading?: Loading;
@@ -58,6 +63,7 @@ export interface PickerItem {
   name: string;
   label: string;
   category: Category;
+  equipment: Equipment;
   loading: Loading;
   unilateral: boolean;
   assisted: boolean;

@@ -25,7 +25,7 @@ test('GymDetail lists machines and opens editor', async () => {
   expect(await screen.findByRole('heading', { name: 'Kamppi' })).toBeInTheDocument();
   await user.click(await screen.findByRole('button', { name: 'Leg Press — Technogym' }));
   expect(location.hash).toBe(`#/gym/${g.id}/exercise/${ge.id}`);
-  expect(screen.getByRole('button', { name: 'Import machine file' })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Import machine files' })).toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Paste from Claude' })).toBeInTheDocument();
   await user.click(screen.getByRole('button', { name: 'Add manually' }));
   expect(location.hash).toBe(`#/gym/${g.id}/exercise/new`);

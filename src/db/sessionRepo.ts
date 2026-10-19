@@ -85,6 +85,14 @@ export async function closeStaleSessions(now: number, timeoutMin: number): Promi
   });
 }
 
+/** Deletes a session and every set logged in it. */
+export async function deleteSession(id: string): Promise<void> {
+  await db.transaction('rw', db.sessions, db.sets, async () => {
+    await db.sets.where('sessionId').equals(id).delete();
+    await db.sessions.delete(id);
+  });
+}
+
 // ---- sets ----
 
 /** Must run inside a rw transaction on sessions. */
@@ -118,7 +126,7 @@ export async function addSet(
       order: existing.length + 1,
       weight,
       reps,
-      baseWeight: loading.type === 'plate' ? loading.base : null,
+      baseWeight: loading.type === 'plate' || loading.type === 'plates' ? loading.base : null,
       unit: loading.type === 'stack' ? (loading.unit ?? 'kg') : 'kg',
       completedAt: now,
     };
@@ -148,6 +156,18 @@ export async function deleteSet(id: string, now: number): Promise<void> {
     await assertOpen(s.sessionId);
     await db.sets.delete(id);
     await db.sessions.update(s.sessionId, { lastActivityAt: now });
+  });
+}
+
+/** Deletes every set of one exercise (a `sessionExercises` key) from an open session. */
+export async function deleteExerciseSets(sessionId: string, key: string, now: number): Promise<void> {
+  await db.transaction('rw', db.sessions, db.sets, async () => {
+    await assertOpen(sessionId);
+    const ids = (await db.sets.where('sessionId').equals(sessionId).toArray())
+      .filter((s) => (s.gymExerciseId ?? 'c:' + s.catalogId) === key)
+      .map((s) => s.id);
+    await db.sets.bulkDelete(ids);
+    if (await db.sessions.get(sessionId)) await db.sessions.update(sessionId, { lastActivityAt: now });
   });
 }
 

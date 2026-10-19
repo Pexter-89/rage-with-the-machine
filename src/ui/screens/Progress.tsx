@@ -10,7 +10,7 @@ import { buildSeries, buildSessionList, buildTableRows, gymColor } from '../../d
 import { emptySlice, filterSets, sliceOptions, type Slice } from '../../domain/slicing';
 import type { Category } from '../../domain/types';
 import ProgressChart from '../components/ProgressChart';
-import { navigate } from '../router';
+import TopBar from '../components/TopBar';
 
 const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
@@ -66,7 +66,12 @@ export default function Progress() {
     };
   }, [sets, catalog, slice, metric]);
 
-  if (!view || !gyms || !catalog) return <main className="screen" />;
+  if (!view || !gyms || !catalog)
+    return (
+      <main className="screen progress">
+        <TopBar route={{ name: 'progress' }} title="Progress" />
+      </main>
+    );
   const { ex, series, rows, sessions } = view;
 
   const set = (patch: Partial<Slice>) => setSlice((s) => ({ ...s, ...patch }));
@@ -88,9 +93,7 @@ export default function Progress() {
 
   return (
     <main className="screen progress">
-      <header className="bar">
-        <h1 className="title">Progress</h1>
-      </header>
+      <TopBar route={{ name: 'progress' }} title="Progress" />
 
       <div className="slicers">
         <label className="field">
@@ -210,7 +213,7 @@ export default function Progress() {
                       <td>{formatDate(r.date)}</td>
                       {gymCell(r.gymId)}
                       <td>{r.setsText}</td>
-                      <td>{r.bestE1rm === null ? '–' : formatWeight(r.bestE1rm)}</td>
+                      <td>{r.bestE1rm === null ? '–' : formatWeight(Math.round(r.bestE1rm * 10) / 10)}</td>
                       <td>{formatWeight(r.volume)}</td>
                     </tr>
                   ))}
@@ -248,12 +251,6 @@ export default function Progress() {
           )}
         </>
       )}
-
-      <div className="bottom-actions">
-        <button className="btn btn-ghost" onClick={() => navigate({ name: 'home' })}>
-          ‹ Home
-        </button>
-      </div>
     </main>
   );
 }

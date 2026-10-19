@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../../db/db';
 import { addGym, deleteGym, listGyms, moveGym, renameGym, setGymArchived } from '../../db/gymRepo';
+import TopBar from '../components/TopBar';
 import { navigate } from '../router';
 
 export default function Gyms() {
@@ -10,7 +11,12 @@ export default function Gyms() {
   const [renaming, setRenaming] = useState<{ id: string; name: string } | null>(null);
   const [newName, setNewName] = useState('');
 
-  if (!gyms || !withSessions) return <main className="screen" />;
+  if (!gyms || !withSessions)
+    return (
+      <main className="screen">
+        <TopBar route={{ name: 'gyms' }} title="Gyms" />
+      </main>
+    );
 
   const active = gyms.filter((g) => !g.archived);
 
@@ -30,12 +36,7 @@ export default function Gyms() {
 
   return (
     <main className="screen">
-      <header className="bar">
-        <button className="btn btn-ghost btn-small" onClick={() => navigate({ name: 'home' })}>
-          ‹ Home
-        </button>
-        <h1 className="title">Gyms</h1>
-      </header>
+      <TopBar route={{ name: 'gyms' }} title="Gyms" />
 
       <ul className="list">
         {gyms.map((g) => {

@@ -3,11 +3,13 @@ import { addCustomEntries, getCatalog } from '../../db/catalogRepo';
 import { db } from '../../db/db';
 import { deleteGymExercise, saveGymExercise } from '../../db/gymRepo';
 import { recomputePlateHistory } from '../../db/sessionRepo';
-import { CATEGORIES } from '../../domain/catalog';
+import { CATEGORIES, DEFAULT_PLATES } from '../../domain/catalog';
 import { parseWeightInput } from '../../domain/loading';
+import { oneLine } from '../lib/errors';
 import { formatWeight } from '../../domain/metrics';
 import type { CatalogExercise, Category, GymExercise, Loading } from '../../domain/types';
-import { navigate } from '../router';
+import TopBar from '../components/TopBar';
+import { navigate, type Route } from '../router';
 
 interface Props {
   gymId: string;
@@ -33,6 +35,8 @@ interface Form {
   step: string;
   start: string;
   max: string;
+  plates: string;
+  sides: 1 | 2;
 }
 
 const slug = (name: string) =>
@@ -48,17 +52,59 @@ function loadingTypeFor(kind: CatalogExercise['kind'] | undefined): LoadingType 
   return kind === 'free' ? 'free' : kind === 'bodyweight' ? 'bodyweight' : 'stack';
 }
 
-function fits(kind: CatalogExercise['kind'], t: LoadingType): boolean {
-  return kind === 'machine' ? t === 'stack' || t === 'plate' : kind === t;
+/** Loading types each kind of exercise can use, in menu order. */
+const TYPES: Record<CatalogExercise['kind'], LoadingType[]> = {
+  machine: ['stack', 'plate', 'plates'],
+  free: ['free', 'plates', 'stack'],
+  bodyweight: ['bodyweight'],
+};
+
+function typeLabel(kind: CatalogExercise['kind'], t: LoadingType): string {
+  switch (t) {
+    case 'stack':
+      return kind === 'machine' ? 'Stack (selectorised)' : 'List of weights or levels';
+    case 'plate':
+      return 'Plate-loaded, fixed steps';
+    case 'plates':
+      return 'Plates, one by one';
+    case 'free':
+      return 'Preset intervals';
+    case 'bodyweight':
+      return 'Bodyweight + added weight';
+  }
 }
 
-function formFromLoading(l: Loading): Pick<Form, 'loadingType' | 'weights' | 'unit' | 'base' | 'step' | 'start' | 'max'> {
-  const blank = { weights: '', unit: 'kg' as const, base: '', step: '', start: '', max: '' };
+function fits(kind: CatalogExercise['kind'], t: LoadingType): boolean {
+  return TYPES[kind].includes(t);
+}
+
+const listText = (ws: number[]) => [...ws].sort((a, b) => a - b).map(formatWeight).join(' ');
+
+/** Parses a list of positive numbers separated by spaces or ";" (a "," followed by a space also separates). */
+function parseList(text: string, what: string): number[] | string {
+  const parts = text.split(/[\s;]+|,(?=\s|$)/).filter(Boolean);
+  if (parts.length === 0) return `Enter at least one ${what}`;
+  const out: number[] = [];
+  for (const p of parts) {
+    const n = num(p);
+    if (n === null || !(n > 0)) return `${what[0].toUpperCase() + what.slice(1)}s must be positive numbers ("${p}")`;
+    out.push(n);
+  }
+  if (new Set(out).size !== out.length) return `Duplicate ${what}s in the list`;
+  return out.sort((a, b) => a - b);
+}
+
+function formFromLoading(
+  l: Loading,
+): Pick<Form, 'loadingType' | 'weights' | 'unit' | 'base' | 'step' | 'start' | 'max' | 'plates' | 'sides'> {
+  const blank = { weights: '', unit: 'kg' as const, base: '', step: '', start: '', max: '', plates: listText(DEFAULT_PLATES), sides: 2 as const };
   switch (l.type) {
     case 'stack':
       return { ...blank, loadingType: 'stack', weights: [...l.weights].sort((a, b) => a - b).map(formatWeight).join(', '), unit: l.unit ?? 'kg' };
     case 'plate':
       return { ...blank, loadingType: 'plate', base: formatWeight(l.base), step: formatWeight(l.step) };
+    case 'plates':
+      return { ...blank, loadingType: 'plates', base: formatWeight(l.base), plates: listText(l.plates), sides: l.sides };
     case 'free':
       return { ...blank, loadingType: 'free', start: formatWeight(l.start), step: formatWeight(l.step), max: formatWeight(l.max) };
     case 'bodyweight':
@@ -79,6 +125,8 @@ const EMPTY: Form = {
   step: '',
   start: '',
   max: '',
+  plates: listText(DEFAULT_PLATES),
+  sides: 2,
 };
 
 export default function ExerciseEdit({ gymId, geId, catalogId }: Props) {
@@ -88,10 +136,18 @@ export default function ExerciseEdit({ gymId, geId, catalogId }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [setCount, setSetCount] = useState(0);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
     let live = true;
     (async () => {
+      try {
+        await load();
+      } catch (e) {
+        if (live) setLoadError(oneLine(e));
+      }
+    })();
+    async function load() {
       const [cat, ge] = await Promise.all([getCatalog(), geId === 'new' ? null : db.gymExercises.get(geId)]);
       if (!live) return;
       if (geId !== 'new' && (!ge || ge.gymId !== gymId)) {
@@ -112,13 +168,24 @@ export default function ExerciseEdit({ gymId, geId, catalogId }: Props) {
       setCatalog(cat);
       setExisting(ge ?? null);
       setForm(next);
-    })();
+    }
     return () => {
       live = false;
     };
   }, [gymId, geId, catalogId]);
 
-  if (!catalog || !form) return <main className="screen" />;
+  const route: Route = { name: 'exercise', gymId, geId, ...(catalogId ? { catalogId } : {}) };
+  if (!catalog || !form)
+    return (
+      <main className="screen">
+        <TopBar route={route} />
+        {loadError && (
+          <p className="error" role="alert">
+            {loadError}
+          </p>
+        )}
+      </main>
+    );
 
   const set = (patch: Partial<Form>) => setForm({ ...form, ...patch });
   const entry = catalog.find((e) => e.id === form.catalogId);
@@ -142,17 +209,17 @@ export default function ExerciseEdit({ gymId, geId, catalogId }: Props) {
     if (!kind) return 'Choose an exercise';
     if (!fits(kind, lt)) return 'This loading type does not fit the exercise';
     if (lt === 'stack') {
-      const parts = form!.weights.split(/[\s;]+|,(?=\s|$)/).filter(Boolean);
-      if (parts.length === 0) return 'Enter at least one weight';
-      const weights: number[] = [];
-      for (const p of parts) {
-        const n = num(p);
-        if (n === null || !(n > 0)) return `Weights must be positive numbers ("${p}")`;
-        weights.push(n);
-      }
-      if (new Set(weights).size !== weights.length) return 'Duplicate weights in the list';
-      weights.sort((a, b) => a - b);
+      const weights = parseList(form!.weights, 'weight');
+      if (typeof weights === 'string') return weights;
       return { type: 'stack', weights, unit: form!.unit };
+    }
+    if (lt === 'plates') {
+      const base = num(form!.base);
+      if (base === null || base < 0) return 'Bar or sled weight must be 0 or more';
+      const plates = parseList(form!.plates, 'plate');
+      if (typeof plates === 'string') return plates;
+      if (plates[0] < MIN_STEP) return `Plates must be at least ${MIN_STEP} kg`;
+      return { type: 'plates', base, plates, sides: form!.sides };
     }
     if (lt === 'plate') {
       const base = num(form!.base);
@@ -196,7 +263,9 @@ export default function ExerciseEdit({ gymId, geId, catalogId }: Props) {
         await addCustomEntries([{ id: cid, name: form!.newName.trim(), category: form!.newCategory, kind: 'machine', builtIn: false }]);
       }
       const old = existing?.loading;
-      if (existing && old?.type === 'plate' && loading.type === 'plate' && old.base !== loading.base) {
+      const plateLike = (l: Loading | undefined): l is Extract<Loading, { type: 'plate' | 'plates' }> =>
+        l?.type === 'plate' || l?.type === 'plates';
+      if (existing && plateLike(old) && plateLike(loading) && old.base !== loading.base) {
         const n = (await db.sets.where('gymExerciseId').equals(existing.id).toArray()).filter((s) => s.baseWeight === old.base).length;
         if (n > 0 && window.confirm(`Recompute ${n} past sets for the new sled weight?`)) {
           await recomputePlateHistory(existing.id, old.base, loading.base);
@@ -240,12 +309,7 @@ export default function ExerciseEdit({ gymId, geId, catalogId }: Props) {
 
   return (
     <main className="screen">
-      <header className="bar">
-        <button className="btn btn-ghost btn-small" onClick={() => navigate({ name: 'gym', gymId })}>
-          ‹ Back
-        </button>
-        <h1 className="title">{existing ? 'Edit exercise' : 'Add exercise'}</h1>
-      </header>
+      <TopBar route={route} title={existing ? 'Edit exercise' : 'Add exercise'} />
 
       <form
         className="form"
@@ -298,12 +362,22 @@ export default function ExerciseEdit({ gymId, geId, catalogId }: Props) {
 
         {field('Label', 'label')}
 
-        {kind === 'machine' && (
+        {kind && TYPES[kind].length > 1 && (
           <label className="field">
             <span>Loading type</span>
-            <select value={lt} onChange={(e) => set({ loadingType: e.target.value as LoadingType })}>
-              <option value="stack">Stack (selectorised)</option>
-              <option value="plate">Plate-loaded</option>
+            <select
+              value={lt}
+              onChange={(e) => {
+                const t = e.target.value as LoadingType;
+                // A barbell starts from the standard 20 kg bar; a sled has no sensible default.
+                set({ loadingType: t, ...(t === 'plates' && !form.base && kind === 'free' ? { base: '20' } : {}) });
+              }}
+            >
+              {TYPES[kind].map((t) => (
+                <option key={t} value={t}>
+                  {typeLabel(kind, t)}
+                </option>
+              ))}
             </select>
           </label>
         )}
@@ -331,6 +405,26 @@ export default function ExerciseEdit({ gymId, geId, catalogId }: Props) {
           <>
             {field('Sled weight (kg)', 'base', { inputMode: 'decimal' })}
             {field('Plate step (kg)', 'step', { inputMode: 'decimal' })}
+          </>
+        )}
+        {lt === 'plates' && (
+          <>
+            {field(kind === 'machine' ? 'Sled weight (kg)' : 'Bar weight (kg)', 'base', { inputMode: 'decimal' })}
+            {field('Plates (kg)', 'plates')}
+            <p className="hint">The plate sizes you can load, separated with spaces</p>
+            <div className="inline-form" role="group" aria-label="Plates go on">
+              {([2, 1] as const).map((n) => (
+                <button
+                  key={n}
+                  type="button"
+                  className={'btn btn-small ' + (form.sides === n ? 'btn-primary' : 'btn-ghost')}
+                  aria-pressed={form.sides === n}
+                  onClick={() => set({ sides: n })}
+                >
+                  {n === 2 ? 'Pairs, both sides' : 'One side'}
+                </button>
+              ))}
+            </div>
           </>
         )}
         {lt === 'free' && (

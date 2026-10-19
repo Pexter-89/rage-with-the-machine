@@ -17,6 +17,12 @@ The URL must not change once you start logging, because your data is tied to it.
 2. Paste it into the Claude app together with a photo of the machine.
 3. Import Claude's reply, either as a file or with Paste from Claude, at the gym screen or during a session.
 
+Photos can go to Claude one at a time or all at once. The import sheet takes several files in one go (and more can be added before importing), or several of Claude's replies pasted together. Machines already at the gym are skipped, and each machine can be unticked before importing.
+
+## Trying out Progress
+
+Settings, then Load demo data, adds two demo gyms with about five months of made-up workouts. Remove demo data deletes them and everything logged at them; your own data is not touched.
+
 ## Backups
 
 Data lives only on the phone. Use Settings, then Export backup, regularly, and save the file to iCloud Drive or Google Drive. Restore with Import backup. A CSV export is also available for analysis.

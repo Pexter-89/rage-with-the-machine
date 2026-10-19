@@ -2,13 +2,21 @@ import { useEffect, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../../db/db';
 import { listGyms } from '../../db/gymRepo';
-import { closeStaleSessions, getOpenSession, isResumable, startOrResumeSession } from '../../db/sessionRepo';
+import {
+  closeStaleSessions,
+  deleteSession,
+  getOpenSession,
+  isResumable,
+  startOrResumeSession,
+} from '../../db/sessionRepo';
 import { getSettings } from '../../db/settingsRepo';
+import ConfirmSheet from '../components/ConfirmSheet';
 import { navigate } from '../router';
 
 export default function Home() {
   // Close timed-out sessions first so the resume check below never offers a stale one.
   const [ready, setReady] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   useEffect(() => {
     let live = true;
     (async () => {
@@ -26,7 +34,7 @@ export default function Home() {
     const [s, settings] = await Promise.all([getOpenSession(), getSettings()]);
     // Judge staleness here too: this query may still hold its pre-sweep result when `ready` flips.
     if (!s || !isResumable(s, Date.now(), settings.autoCloseMinutes)) return null;
-    return { session: s, gym: await db.gyms.get(s.gymId) };
+    return { session: s, gym: await db.gyms.get(s.gymId), sets: await db.sets.where('sessionId').equals(s.id).count() };
   }, []);
 
   async function start(gymId: string) {
@@ -42,9 +50,14 @@ export default function Home() {
       {ready && gyms && open !== undefined && (
         <>
           {open?.gym && (
-            <button className="btn btn-big btn-ok" onClick={() => navigate({ name: 'session', sessionId: open.session.id })}>
-              Resume session at {open.gym.name}
-            </button>
+            <div className="split split-big">
+              <button className="btn btn-big btn-ok" onClick={() => navigate({ name: 'session', sessionId: open.session.id })}>
+                Resume session at {open.gym.name}
+              </button>
+              <button className="btn btn-ok split-x" aria-label="Delete session" onClick={() => setConfirmDelete(true)}>
+                ✕
+              </button>
+            </div>
           )}
           <p className="hint">Start a session</p>
           {gyms.length === 0 && <p className="hint">No gyms yet. Add one under Gyms.</p>}
@@ -67,6 +80,16 @@ export default function Home() {
           Settings
         </button>
       </nav>
+      <ConfirmSheet
+        title="Delete session?"
+        message={
+          confirmDelete && open?.gym
+            ? `The session at ${open.gym.name}${open.sets ? ` and its ${open.sets} logged ${open.sets === 1 ? 'set' : 'sets'}` : ''} will be deleted.`
+            : null
+        }
+        onConfirm={() => (open ? deleteSession(open.session.id) : undefined)}
+        onClose={() => setConfirmDelete(false)}
+      />
     </main>
   );
 }

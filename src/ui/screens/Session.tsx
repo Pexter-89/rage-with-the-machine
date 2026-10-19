@@ -2,11 +2,13 @@ import { useEffect, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../../db/db';
 import { getCatalog } from '../../db/catalogRepo';
-import { finishSession, sessionExercises } from '../../db/sessionRepo';
+import { SessionEndedError, deleteExerciseSets, finishSession, sessionExercises } from '../../db/sessionRepo';
 import { resolveItem } from '../../db/gymRepo';
 import { formatTime } from '../../domain/dates';
 import { formatSummary, summarizeSets } from '../../domain/metrics';
-import { navigate } from '../router';
+import ConfirmSheet from '../components/ConfirmSheet';
+import TopBar from '../components/TopBar';
+import { navigate, type Route } from '../router';
 
 function formatElapsed(ms: number): string {
   const min = Math.max(0, Math.floor(ms / 60_000));
@@ -28,6 +30,7 @@ export default function Session({ sessionId }: { sessionId: string }) {
         const summary = summarizeSets(ex.sets);
         return {
           key: ex.key,
+          count: ex.sets.length,
           name,
           label: item?.label ?? '',
           summary: summary ? formatSummary(summary, ex.sets[0].unit) : '',
@@ -43,12 +46,21 @@ export default function Session({ sessionId }: { sessionId: string }) {
     return () => clearInterval(id);
   }, []);
 
+  const [removing, setRemoving] = useState<string | null>(null);
+
   useEffect(() => {
     if (data === null) navigate({ name: 'home' });
   }, [data]);
 
-  if (!data) return <main className="screen session" />;
+  const route: Route = { name: 'session', sessionId };
+  if (!data)
+    return (
+      <main className="screen session">
+        <TopBar route={route} />
+      </main>
+    );
   const { session, gymName, cards } = data;
+  const removingCard = cards.find((c) => c.key === removing);
 
   async function finish() {
     await finishSession(sessionId, Date.now());
@@ -57,21 +69,23 @@ export default function Session({ sessionId }: { sessionId: string }) {
 
   return (
     <main className="screen session">
-      <header className="bar">
-        <h1 className="title">{gymName}</h1>
+      <TopBar route={route} title={gymName}>
         <button className="btn btn-quiet btn-small" aria-label="Finish session" onClick={finish}>
           Finish
         </button>
-      </header>
+      </TopBar>
       <p className="hint">{`Started ${formatTime(session.startedAt)} · ${formatElapsed(now - session.startedAt)}`}</p>
 
       <ul className="list session-cards">
         {cards.map((c) => (
-          <li key={c.key}>
+          <li key={c.key} className="split">
             <button className="btn card" onClick={() => navigate({ name: 'log', sessionId, key: c.key })}>
               <span className="card-name">{c.name}</span>
               {c.label && <span className="card-label">{c.label}</span>}
               <span className="card-summary">{c.summary}</span>
+            </button>
+            <button className="btn split-x" aria-label={`Delete ${c.name} sets`} onClick={() => setRemoving(c.key)}>
+              ✕
             </button>
           </li>
         ))}
@@ -80,6 +94,25 @@ export default function Session({ sessionId }: { sessionId: string }) {
       <button className="btn btn-big btn-primary" onClick={() => navigate({ name: 'pick', sessionId })}>
         ＋ Log exercise
       </button>
+
+      <ConfirmSheet
+        title="Delete exercise?"
+        message={
+          removingCard
+            ? `${removingCard.name}: delete its ${removingCard.count} ${removingCard.count === 1 ? 'set' : 'sets'} from this session`
+            : null
+        }
+        onConfirm={async () => {
+          if (!removing) return;
+          try {
+            await deleteExerciseSets(sessionId, removing, Date.now());
+          } catch (e) {
+            if (e instanceof SessionEndedError) navigate({ name: 'home' });
+            else throw e;
+          }
+        }}
+        onClose={() => setRemoving(null)}
+      />
     </main>
   );
 }

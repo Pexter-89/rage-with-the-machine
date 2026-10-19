@@ -9,11 +9,14 @@ import { formatDate } from '../../domain/dates';
 import { parseRepsInput, parseWeightInput, snapToWheel, wheelValues } from '../../domain/loading';
 import { formatSummary, formatWeight, summarizeSets } from '../../domain/metrics';
 import type { PickerItem, SetEntry } from '../../domain/types';
+import ConfirmSheet from '../components/ConfirmSheet';
+import PlatePicker from '../components/PlatePicker';
 import Sheet from '../components/Sheet';
+import TopBar from '../components/TopBar';
 import Wheel from '../components/Wheel';
 import type { WheelHandle } from '../components/Wheel';
 import { oneLine } from '../lib/errors';
-import { navigate } from '../router';
+import { navigate, type Route } from '../router';
 
 const REPS = Array.from({ length: 50 }, (_, i) => i + 1);
 
@@ -52,17 +55,22 @@ const WheelPair = forwardRef<PairHandle, PairProps>(function WheelPair({ item, r
   useImperativeHandle(ref, () => ({
     flush: () => ({ weight: w.current?.flush() ?? row.weight, reps: r.current?.flush() ?? row.reps }),
   }));
+  const setWeight = (weight: number) => onChange((r) => ({ ...r, weight }));
   return (
     <>
-      <Wheel
-        ref={w}
-        label={weightLabel(item)}
-        values={wheelValues(item.loading)}
-        value={row.weight}
-        onChange={(weight) => onChange((r) => ({ ...r, weight }))}
-        parse={parseWeightInput}
-        suffix={isLevel(item) ? 'L' : undefined}
-      />
+      {item.loading.type === 'plates' && !item.assisted ? (
+        <PlatePicker ref={w} loading={item.loading} value={row.weight} onChange={setWeight} />
+      ) : (
+        <Wheel
+          ref={w}
+          label={weightLabel(item)}
+          values={wheelValues(item.loading)}
+          value={row.weight}
+          onChange={setWeight}
+          parse={parseWeightInput}
+          suffix={isLevel(item) ? 'L' : undefined}
+        />
+      )}
       <Wheel
         ref={r}
         label={item.unilateral ? 'REPS / SIDE' : 'REPS'}
@@ -138,6 +146,7 @@ export default function Logging({ sessionId, itemKey }: { sessionId: string; ite
   const inFlight = useRef(false);
   const pair = useRef<PairHandle>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -145,7 +154,13 @@ export default function Logging({ sessionId, itemKey }: { sessionId: string; ite
     else if (data?.status === 'session') navigate({ name: 'session', sessionId });
   }, [data, sessionId]);
 
-  if (!data || data.status !== 'ready') return <main className="screen logging" />;
+  const route: Route = { name: 'log', sessionId, key: itemKey };
+  const loadingScreen = (
+    <main className="screen logging">
+      <TopBar route={route} />
+    </main>
+  );
+  if (!data || data.status !== 'ready') return loadingScreen;
   const { item, sets, last, lastGymName } = data;
 
   if (!row) {
@@ -160,11 +175,12 @@ export default function Logging({ sessionId, itemKey }: { sessionId: string; ite
           }
         : { weight: values[0] ?? 0, reps: 10 },
     );
-    return <main className="screen logging" />;
+    return loadingScreen;
   }
 
   const lastSummary = last ? summarizeSets(last.sets) : null;
   const editing = sets.find((s) => s.id === editingId);
+  const deleting = sets.find((s) => s.id === deletingId);
 
   async function complete() {
     if (inFlight.current || !row) return;
@@ -189,7 +205,7 @@ export default function Logging({ sessionId, itemKey }: { sessionId: string; ite
 
   return (
     <main className="screen logging">
-      <h1 className="title">{item.name}</h1>
+      <TopBar route={route} title={item.name} />
       {item.label && <p className="hint">{item.label}</p>}
 
       {last && lastSummary && (
@@ -203,9 +219,12 @@ export default function Logging({ sessionId, itemKey }: { sessionId: string; ite
 
       <ol className="list done-sets">
         {sets.map((s, i) => (
-          <li key={s.id}>
+          <li key={s.id} className="split">
             <button className="btn btn-left done-set" onClick={() => setEditingId(s.id)}>
               {`${i + 1}  ${setText(s)}`}
+            </button>
+            <button className="btn split-x" aria-label={`Delete set ${i + 1}`} onClick={() => setDeletingId(s.id)}>
+              ✕
             </button>
           </li>
         ))}
@@ -230,6 +249,20 @@ export default function Logging({ sessionId, itemKey }: { sessionId: string; ite
       <Sheet open={!!editing} title="Edit set" onClose={() => setEditingId(null)}>
         {editing && <EditSheet key={editing.id} item={item} set={editing} onClose={() => setEditingId(null)} />}
       </Sheet>
+      <ConfirmSheet
+        title="Delete set?"
+        message={deleting ? `Set ${sets.indexOf(deleting) + 1}: ${setText(deleting)}` : null}
+        onConfirm={async () => {
+          if (!deleting) return;
+          try {
+            await deleteSet(deleting.id, Date.now());
+          } catch (e) {
+            if (e instanceof SessionEndedError) navigate({ name: 'home' });
+            else throw e;
+          }
+        }}
+        onClose={() => setDeletingId(null)}
+      />
     </main>
   );
 }
