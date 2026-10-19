@@ -19,6 +19,10 @@ The URL must not change once you start logging, because your data is tied to it.
 
 Photos can go to Claude one at a time or all at once. The import sheet takes several files in one go (and more can be added before importing), or several of Claude's replies pasted together. Machines already at the gym are skipped, and each machine can be unticked before importing.
 
+## Sharing and editing a gym
+
+On a gym's screen, Export gym file saves the gym and all its equipment as one file. Send it to someone, who loads it with Gyms, then Import gym from file. Or give it to Claude with the changes you want and load Claude's reply back with Replace from file: the gym's equipment becomes exactly the file's. A machine with the same exercise and label is updated in place so its history stays with it; equipment no longer in the file is deleted, or hidden if it has logged sets.
+
 ## Trying out Progress
 
 Settings, then Load demo data, adds two demo gyms with about five months of made-up workouts. Remove demo data deletes them and everything logged at them; your own data is not touched.

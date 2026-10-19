@@ -1,20 +1,44 @@
 import { useEffect, useRef, useState } from 'react';
 import { getCatalog } from '../../db/catalogRepo';
-import { importMachines, machinesAlreadyAtGym } from '../../db/gymRepo';
+import {
+  addGymFromFile,
+  importMachines,
+  machinesAlreadyAtGym,
+  planReplace,
+  replaceGymEquipment,
+  type ReplaceSummary,
+} from '../../db/gymRepo';
 import { CATEGORIES } from '../../domain/catalog';
 import { parseMachineBatch, type BatchResult, type BatchSource } from '../../domain/importMachine';
-import type { CatalogExercise, GymExercise, Loading } from '../../domain/types';
+import type { CatalogExercise, Gym, GymExercise, Loading } from '../../domain/types';
 import { formatWeight } from '../../domain/metrics';
 import { oneLine as toOneLine } from '../lib/errors';
 import { readFileText } from '../lib/share';
 import Sheet from './Sheet';
 
+/**
+ * add: add machines to a gym (skipping ones it has). replace: make the gym's equipment exactly the file's.
+ * newGym: create a gym from a gym file.
+ */
+type Mode = 'add' | 'replace' | 'newGym';
+
 interface Props {
-  gymId: string;
+  mode?: Mode;
+  /** The gym to add to or replace; not used for newGym. */
+  gymId?: string;
   /** Files already chosen by the caller; read and parsed on mount. */
   initialFiles?: File[];
   onClose(): void;
-  onImported(created: GymExercise[]): void;
+  onImported?(created: GymExercise[]): void;
+  onGymCreated?(gym: Gym): void;
+}
+
+const TITLES: Record<Mode, string> = { add: 'Import machines', replace: 'Replace equipment', newGym: 'Import gym' };
+
+function replaceText(p: ReplaceSummary): string {
+  const parts = [`${p.updated} updated`, `${p.added} added`, `${p.removed} removed`];
+  if (p.hidden) parts.push(`${p.hidden} hidden (they have logged sets)`);
+  return parts.join(', ');
 }
 
 const oneLine = (e: unknown) => toOneLine(e, 'Import failed');
@@ -42,7 +66,16 @@ interface Parsed extends BatchResult {
   already: boolean[];
 }
 
-export default function ImportMachineSheet({ gymId, initialFiles, onClose, onImported }: Props) {
+export default function ImportMachineSheet({
+  mode = 'add',
+  gymId = '',
+  initialFiles,
+  onClose,
+  onImported,
+  onGymCreated,
+}: Props) {
+  const [gymName, setGymName] = useState<string | null>(null); // null: not typed, use the file's
+  const [plan, setPlan] = useState<ReplaceSummary | null>(null);
   const [text, setText] = useState('');
   const [files, setFiles] = useState<BatchSource[]>([]);
   const [parsed, setParsed] = useState<Parsed | null>(null);
@@ -68,13 +101,16 @@ export default function ImportMachineSheet({ gymId, initialFiles, onClose, onImp
       const c = await getCatalog();
       if (mine !== seq.current) return;
       const batch = parseMachineBatch(sources, c);
-      const already = await machinesAlreadyAtGym(gymId, batch.machines);
+      const already =
+        mode === 'add' ? await machinesAlreadyAtGym(gymId, batch.machines) : batch.machines.map(() => false);
       if (mine !== seq.current) return;
       setCatalog(c);
       setParsed({ ...batch, already });
       setPicked(already.map((a) => !a));
     } catch (e) {
-      if (mine === seq.current) setParsed({ machines: [], newExercises: [], errors: [oneLine(e)], already: [] });
+      if (mine === seq.current) {
+        setParsed({ machines: [], newExercises: [], errors: [oneLine(e)], already: [], gymName: null });
+      }
     }
   }
 
@@ -124,12 +160,33 @@ export default function ImportMachineSheet({ gymId, initialFiles, onClose, onImp
   const chosen = parsed ? parsed.machines.filter((_, i) => picked[i] && !parsed.already[i]) : [];
   const nothingNew = !!parsed && parsed.machines.length > 0 && parsed.machines.every((_, i) => parsed.already[i]);
 
+  // A gym file may list no equipment: then replacing empties the gym, and a new gym starts empty.
+  const emptyGymFile = !!parsed && parsed.machines.length === 0 && parsed.gymName !== null && parsed.errors.length === 0;
+  const name = (gymName ?? parsed?.gymName ?? '').trim();
+  const canAct =
+    !!parsed &&
+    (mode === 'add' ? chosen.length > 0 : chosen.length > 0 || emptyGymFile) &&
+    (mode !== 'newGym' || name.length > 0);
+
+  const planKey = mode === 'replace' && parsed && canAct ? JSON.stringify(chosen) : null;
+  useEffect(() => {
+    let live = true;
+    setPlan(null);
+    if (planKey === null) return;
+    void planReplace(gymId, JSON.parse(planKey)).then((p) => live && setPlan(p));
+    return () => {
+      live = false;
+    };
+  }, [planKey, gymId]);
+
   async function doImport() {
-    if (!parsed || busy || chosen.length === 0) return;
+    if (!parsed || busy || !canAct) return;
     setBusy(true);
+    const file = { ok: true as const, machines: chosen, newExercises: parsed.newExercises };
     try {
-      const created = await importMachines(gymId, { ok: true, machines: chosen, newExercises: parsed.newExercises });
-      onImported(created);
+      if (mode === 'replace') await replaceGymEquipment(gymId, file);
+      else if (mode === 'newGym') onGymCreated?.(await addGymFromFile(name, file));
+      else onImported?.(await importMachines(gymId, file));
       onClose();
     } catch (e) {
       setError(oneLine(e));
@@ -142,7 +199,13 @@ export default function ImportMachineSheet({ gymId, initialFiles, onClose, onImp
   const neededNew = parsed ? parsed.newExercises.filter((e) => chosen.some((m) => m.catalogId === e.id)) : [];
 
   return (
-    <Sheet open title="Import machines" onClose={onClose}>
+    <Sheet open title={TITLES[mode]} onClose={onClose}>
+      {mode === 'replace' && (
+        <p className="hint">
+          Everything at this gym is replaced by the file. A machine with the same exercise and label is updated in
+          place, so its history stays with it.
+        </p>
+      )}
       <input
         ref={fileRef}
         type="file"
@@ -224,14 +287,32 @@ export default function ImportMachineSheet({ gymId, initialFiles, onClose, onImp
               <li key={e.id} className="hint">{`New: ${e.name}`}</li>
             ))}
           </ul>
+        </>
+      )}
+      {emptyGymFile && <p className="hint">{`${parsed!.gymName}: no equipment in the file`}</p>}
+      {parsed && (parsed.machines.length > 0 || emptyGymFile) && (
+        <>
+          {mode === 'newGym' && (
+            <label className="field">
+              <span>Gym name</span>
+              <input value={gymName ?? parsed.gymName ?? ''} onChange={(e) => setGymName(e.target.value)} />
+            </label>
+          )}
           {error && (
             <p className="error" role="alert">
               {error}
             </p>
           )}
-          {nothingNew && <p className="hint">Nothing new to import</p>}
-          <button className="btn btn-ok" disabled={busy || chosen.length === 0} onClick={() => void doImport()}>
-            {chosen.length > 1 ? `Import ${chosen.length} machines` : 'Import'}
+          {mode === 'replace' && plan && <p className="hint">{replaceText(plan)}</p>}
+          {mode === 'add' && nothingNew && <p className="hint">Nothing new to import</p>}
+          <button className="btn btn-ok" disabled={busy || !canAct} onClick={() => void doImport()}>
+            {mode === 'newGym'
+              ? 'Create gym'
+              : mode === 'replace'
+                ? `Replace with ${chosen.length} ${chosen.length === 1 ? 'item' : 'items'}`
+                : chosen.length > 1
+                  ? `Import ${chosen.length} machines`
+                  : 'Import'}
           </button>
         </>
       )}

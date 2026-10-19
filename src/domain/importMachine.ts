@@ -1,11 +1,13 @@
 import { CATEGORIES } from './catalog';
-import type { CatalogExercise, Category, Loading } from './types';
+import type { CatalogExercise, Category, Kind, Loading } from './types';
 
 export interface ParsedMachine {
   catalogId: string;
   label: string;
   notes: string;
   loading: Loading;
+  /** Hidden at the gym (exported gym files keep this; Claude's machine files leave it out). */
+  hidden?: boolean;
 }
 
 export type ParseResult =
@@ -139,19 +141,46 @@ function parseLoading(v: unknown): Loading {
     if (sides !== 1 && sides !== 2) return fail('plates sides must be 1 or 2');
     return { type: 'plates', base: v.base, plates, sides };
   }
-  return fail('loading type must be "stack", "plate" or "plates"');
+  if (v.type === 'free') {
+    unknownField(v, ['type', 'start', 'step', 'max', 'bigStepFrom', 'bigStep'], 'loading ');
+    if (!isNum(v.start) || v.start < 0) return fail('free start must be a number of 0 or more');
+    if (!isNum(v.step) || v.step < MIN_PLATE_STEP) return fail(`free step must be at least ${MIN_PLATE_STEP}`);
+    if (!isNum(v.max) || !(v.max > v.start)) return fail('free max must be above start');
+    const big = v.bigStepFrom !== undefined || v.bigStep !== undefined;
+    if (big && (!isNum(v.bigStepFrom) || !isNum(v.bigStep) || v.bigStep < MIN_PLATE_STEP)) {
+      return fail('free bigStepFrom and bigStep must be given together, bigStep at least ' + MIN_PLATE_STEP);
+    }
+    return big
+      ? { type: 'free', start: v.start, step: v.step, max: v.max, bigStepFrom: v.bigStepFrom as number, bigStep: v.bigStep as number }
+      : { type: 'free', start: v.start, step: v.step, max: v.max };
+  }
+  if (v.type === 'bodyweight') {
+    unknownField(v, ['type', 'step', 'max'], 'loading ');
+    if (!isNum(v.step) || v.step < MIN_PLATE_STEP) return fail(`bodyweight step must be at least ${MIN_PLATE_STEP}`);
+    if (!isNum(v.max) || v.max <= 0) return fail('bodyweight max must be above 0');
+    return { type: 'bodyweight', step: v.step, max: v.max };
+  }
+  return fail('loading type must be "stack", "plate", "plates", "free" or "bodyweight"');
 }
+
+/** Loading types each kind of exercise can use. */
+const FITS: Record<Kind, Loading['type'][]> = {
+  machine: ['stack', 'plate', 'plates'],
+  free: ['free', 'plates', 'stack'],
+  bodyweight: ['bodyweight'],
+};
 
 function parseMachine(
   m: unknown,
-  known: Set<string>,
+  known: Map<string, CatalogExercise>,
   declared: Map<string, CatalogExercise>,
 ): { machine: ParsedMachine; newExercise: CatalogExercise | null } {
   if (!isRecord(m)) return fail('must be an object');
-  unknownField(m, ['exercise', 'newExercise', 'label', 'loading', 'notes'], '');
+  unknownField(m, ['exercise', 'newExercise', 'label', 'loading', 'notes', 'hidden'], '');
   if (typeof m.exercise !== 'string' || !m.exercise) return fail('exercise must be a catalogue id');
   if (m.label !== undefined && typeof m.label !== 'string') return fail('label must be a string');
   if (m.notes !== undefined && typeof m.notes !== 'string') return fail('notes must be a string');
+  if (m.hidden !== undefined && typeof m.hidden !== 'boolean') return fail('hidden must be true or false');
 
   let newExercise: CatalogExercise | null = null;
   if (m.newExercise !== undefined && m.newExercise !== null) {
@@ -169,12 +198,18 @@ function parseMachine(
     return fail(`unknown exercise "${m.exercise}"`);
   }
 
+  const loading = parseLoading(m.loading);
+  const kind = (known.get(m.exercise) ?? declared.get(m.exercise) ?? newExercise)?.kind ?? 'machine';
+  if (!FITS[kind].includes(loading.type)) {
+    return fail(`loading type "${loading.type}" does not fit a ${kind === 'machine' ? 'machine' : kind} exercise`);
+  }
   return {
     machine: {
       catalogId: m.exercise,
       label: (m.label as string | undefined) ?? '',
       notes: (m.notes as string | undefined) ?? '',
-      loading: parseLoading(m.loading),
+      loading,
+      ...(m.hidden === true ? { hidden: true } : {}),
     },
     newExercise,
   };
@@ -185,15 +220,26 @@ const NOT_FOUND = 'No machine file found: expected JSON with "format": "rwtm-mac
 /** Parses one machine file object. `declared` holds new exercises from earlier files of the same batch. */
 function parseRoot(
   root: unknown,
-  known: Set<string>,
+  known: Map<string, CatalogExercise>,
   declared: Map<string, CatalogExercise>,
-): { machines: ParsedMachine[]; declared: Map<string, CatalogExercise> } {
+): { machines: ParsedMachine[]; declared: Map<string, CatalogExercise>; gymName: string | null } {
   if (!isRecord(root)) return fail(NOT_FOUND);
   for (const k of Object.keys(root)) {
-    if (!['format', 'version', 'machines'].includes(k)) fail(`unknown field "${k}"`);
+    if (!['format', 'version', 'gym', 'machines'].includes(k)) fail(`unknown field "${k}"`);
   }
   if (root.version !== 1) fail('Unsupported file version (expected "version": 1)');
-  if (!Array.isArray(root.machines) || root.machines.length === 0) fail('"machines" must be a non-empty array');
+  let gymName: string | null = null;
+  if (root.gym !== undefined && root.gym !== null) {
+    if (!isRecord(root.gym)) fail('gym must be an object with a name');
+    const g = root.gym as Rec;
+    unknownField(g, ['name'], 'gym ');
+    if (typeof g.name !== 'string' || !g.name.trim()) fail('gym name must be a non-empty string');
+    gymName = (g.name as string).trim();
+  }
+  // A gym file may list no equipment (an empty gym); a machine file must list some.
+  if (!Array.isArray(root.machines) || (root.machines.length === 0 && gymName === null)) {
+    fail('"machines" must be a non-empty array');
+  }
 
   const mine = new Map(declared);
   const machines: ParsedMachine[] = [];
@@ -208,12 +254,12 @@ function parseRoot(
       throw e;
     }
   }
-  return { machines, declared: mine };
+  return { machines, declared: mine, gymName };
 }
 
 export function parseMachineFile(text: string, catalog: CatalogExercise[]): ParseResult {
   try {
-    const { machines, declared } = parseRoot(extractMachineJson(text), new Set(catalog.map((e) => e.id)), new Map());
+    const { machines, declared } = parseRoot(extractMachineJson(text), new Map(catalog.map((e) => [e.id, e])), new Map());
     return { ok: true, machines, newExercises: [...declared.values()] };
   } catch (e) {
     if (e instanceof Invalid) return { ok: false, error: e.message };
@@ -232,6 +278,8 @@ export interface BatchResult {
   newExercises: CatalogExercise[];
   /** One line per file (or machine file within a text) that could not be read; the others still import. */
   errors: string[];
+  /** The gym name of the first gym file read (an exported gym), if any. */
+  gymName: string | null;
 }
 
 const sameParsed = (a: ParsedMachine, b: ParsedMachine) =>
@@ -243,8 +291,9 @@ const sameParsed = (a: ParsedMachine, b: ParsedMachine) =>
  * (the same photo sent twice) are kept once.
  */
 export function parseMachineBatch(sources: BatchSource[], catalog: CatalogExercise[]): BatchResult {
-  const known = new Set(catalog.map((e) => e.id));
+  const known = new Map(catalog.map((e) => [e.id, e]));
   let declared = new Map<string, CatalogExercise>();
+  let gymName: string | null = null;
   const machines: ParsedMachine[] = [];
   const errors: string[] = [];
   for (const src of sources) {
@@ -257,6 +306,7 @@ export function parseMachineBatch(sources: BatchSource[], catalog: CatalogExerci
       try {
         const parsed = parseRoot(root, known, declared);
         declared = parsed.declared;
+        gymName ??= parsed.gymName;
         for (const m of parsed.machines) if (!machines.some((x) => sameParsed(x, m))) machines.push(m);
       } catch (e) {
         if (!(e instanceof Invalid)) throw e;
@@ -265,5 +315,5 @@ export function parseMachineBatch(sources: BatchSource[], catalog: CatalogExerci
       }
     });
   }
-  return { machines, newExercises: [...declared.values()], errors };
+  return { machines, newExercises: [...declared.values()], errors, gymName };
 }

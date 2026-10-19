@@ -984,3 +984,7 @@ textarea {
   font-size: 0.9rem;
   font-variant-numeric: tabular-nums;
 }
+
+.hint.left {
+  text-align: left;
+}

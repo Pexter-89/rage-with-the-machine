@@ -78,7 +78,8 @@ export async function machinesAlreadyAtGym(gymId: string, machines: ParsedMachin
 
 /**
  * Atomic: skips machines the gym already has, adds the custom catalogue entries the rest need, then one
- * visible GymExercise per remaining machine. Returns only the created ones; any failure adds nothing.
+ * GymExercise per remaining machine. A free-weight or bodyweight setting replaces the gym's existing one for
+ * that exercise (a gym has at most one). Returns the created or updated ones; any failure adds nothing.
  */
 export async function importMachines(gymId: string, parsed: Extract<ParseResult, { ok: true }>): Promise<GymExercise[]> {
   return db.transaction('rw', [db.customCatalog, db.gymExercises], async () => {
@@ -87,14 +88,133 @@ export async function importMachines(gymId: string, parsed: Extract<ParseResult,
     const needed = new Set(fresh.map((m) => m.catalogId));
     const newExercises = parsed.newExercises.filter((e) => needed.has(e.id));
     if (newExercises.length > 0) await addCustomEntries(newExercises);
+    const byId = new Map((await getCatalog()).map((e) => [e.id, e]));
+    const mine = await db.gymExercises.where('gymId').equals(gymId).toArray();
     const saved: GymExercise[] = [];
     for (const m of fresh) {
+      const entry = byId.get(m.catalogId);
+      const existing = entry && isFreeLike(entry) ? mine.find((ge) => ge.catalogId === m.catalogId) : undefined;
       saved.push(
-        await saveGymExercise({ gymId, catalogId: m.catalogId, label: m.label, notes: m.notes, loading: m.loading, hidden: false }),
+        await saveGymExercise({
+          id: existing?.id,
+          gymId,
+          catalogId: m.catalogId,
+          label: m.label,
+          notes: m.notes,
+          loading: m.loading,
+          hidden: m.hidden ?? false,
+        }),
       );
     }
     return saved;
   });
+}
+
+export interface ReplaceSummary {
+  /** Machines in the file that matched one already at the gym (same exercise and label) and were updated. */
+  updated: number;
+  added: number;
+  /** Gone from the file and never logged: deleted. */
+  removed: number;
+  /** Gone from the file but with logged sets: hidden, so their history keeps its machine. */
+  hidden: number;
+}
+
+/** What `replaceGymEquipment` would do, without doing it. */
+export async function planReplace(gymId: string, machines: ParsedMachine[]): Promise<ReplaceSummary> {
+  const mine = await db.gymExercises.where('gymId').equals(gymId).toArray();
+  const used = new Set<string>();
+  let updated = 0;
+  for (const m of machines) {
+    const match = mine.find((ge) => !used.has(ge.id) && ge.catalogId === m.catalogId && ge.label === m.label);
+    if (match) {
+      used.add(match.id);
+      updated++;
+    }
+  }
+  let removed = 0;
+  let hidden = 0;
+  for (const ge of mine) {
+    if (used.has(ge.id)) continue;
+    if ((await db.sets.where('gymExerciseId').equals(ge.id).count()) > 0) hidden++;
+    else removed++;
+  }
+  return { updated, added: machines.length - updated, removed, hidden };
+}
+
+/**
+ * Replaces a gym's equipment with a file's, atomically. A machine with the same exercise and label as one at
+ * the gym updates it in place (so its history stays linked); the rest are added. Equipment missing from the
+ * file is deleted, or hidden when it has logged sets.
+ */
+export async function replaceGymEquipment(gymId: string, parsed: Extract<ParseResult, { ok: true }>): Promise<ReplaceSummary> {
+  return db.transaction('rw', [db.customCatalog, db.gymExercises, db.sets], async () => {
+    const summary = await planReplace(gymId, parsed.machines);
+    const needed = new Set(parsed.machines.map((m) => m.catalogId));
+    const newExercises = parsed.newExercises.filter((e) => needed.has(e.id));
+    if (newExercises.length > 0) await addCustomEntries(newExercises);
+    const mine = await db.gymExercises.where('gymId').equals(gymId).toArray();
+    const used = new Set<string>();
+    for (const m of parsed.machines) {
+      const match = mine.find((ge) => !used.has(ge.id) && ge.catalogId === m.catalogId && ge.label === m.label);
+      if (match) used.add(match.id);
+      await saveGymExercise({
+        id: match?.id,
+        gymId,
+        catalogId: m.catalogId,
+        label: m.label,
+        notes: m.notes,
+        loading: m.loading,
+        hidden: m.hidden ?? false,
+      });
+    }
+    for (const ge of mine) {
+      if (used.has(ge.id)) continue;
+      if ((await db.sets.where('gymExerciseId').equals(ge.id).count()) > 0) await db.gymExercises.update(ge.id, { hidden: true });
+      else await db.gymExercises.delete(ge.id);
+    }
+    return summary;
+  });
+}
+
+/** Creates a gym named `name` with a file's equipment. */
+export async function addGymFromFile(name: string, parsed: Extract<ParseResult, { ok: true }>): Promise<Gym> {
+  return db.transaction('rw', [db.gyms, db.customCatalog, db.gymExercises], async () => {
+    const gym = await addGym(name);
+    await importMachines(gym.id, parsed);
+    return gym;
+  });
+}
+
+/**
+ * A gym and its equipment as a machine file (the format Claude writes, plus the gym's name), for sending to
+ * someone else or for editing with Claude. Custom exercises travel as `newExercise`.
+ */
+export async function exportGymFile(gymId: string): Promise<object> {
+  const [gym, mine, catalog] = await Promise.all([
+    db.gyms.get(gymId),
+    db.gymExercises.where('gymId').equals(gymId).toArray(),
+    getCatalog(),
+  ]);
+  const byId = new Map(catalog.map((e) => [e.id, e]));
+  const machines = mine
+    .filter((ge) => byId.has(ge.catalogId))
+    .sort(
+      (a, b) =>
+        byName(byId.get(a.catalogId), byId.get(b.catalogId)) || a.label.localeCompare(b.label),
+    )
+    .map((ge) => {
+      const e = byId.get(ge.catalogId)!;
+      return {
+        exercise: ge.catalogId,
+        newExercise: e.builtIn ? null : { id: e.id, name: e.name, category: e.category, kind: e.kind },
+        label: ge.label,
+        loading: ge.loading,
+        notes: ge.notes,
+        ...(ge.hidden ? { hidden: true } : {}),
+      };
+    });
+  return { format: 'rwtm-machine', version: 1, gym: { name: gym?.name ?? '' }, machines };
 }
 
 export async function deleteGymExercise(id: string): Promise<void> {

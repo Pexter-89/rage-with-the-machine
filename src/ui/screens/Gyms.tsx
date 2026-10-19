@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../../db/db';
 import { addGym, deleteGym, listGyms, moveGym, renameGym, setGymArchived } from '../../db/gymRepo';
+import ImportMachineSheet from '../components/ImportMachineSheet';
 import TopBar from '../components/TopBar';
 import { navigate } from '../router';
 
@@ -10,6 +11,7 @@ export default function Gyms() {
   const withSessions = useLiveQuery(async () => new Set((await db.sessions.toArray()).map((s) => s.gymId)), []);
   const [renaming, setRenaming] = useState<{ id: string; name: string } | null>(null);
   const [newName, setNewName] = useState('');
+  const [importing, setImporting] = useState(false);
 
   if (!gyms || !withSessions)
     return (
@@ -121,6 +123,16 @@ export default function Gyms() {
           Save
         </button>
       </form>
+      <button className="btn btn-ghost" onClick={() => setImporting(true)}>
+        Import gym from file
+      </button>
+      {importing && (
+        <ImportMachineSheet
+          mode="newGym"
+          onClose={() => setImporting(false)}
+          onGymCreated={(g) => navigate({ name: 'gym', gymId: g.id })}
+        />
+      )}
     </main>
   );
 }

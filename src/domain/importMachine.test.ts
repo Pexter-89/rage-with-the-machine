@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import { BUILT_IN_CATALOG } from './catalog';
-import { extractMachineJson, parseMachineFile } from './importMachine';
+import { extractMachineJson, parseMachineBatch, parseMachineFile } from './importMachine';
 
 const valid = `{"format":"rwtm-machine","version":1,"machines":[{"exercise":"leg-press","newExercise":null,"label":"Technogym","loading":{"type":"plate","base":62,"step":2.5},"notes":"Seat 5"}]}`;
 
@@ -135,7 +135,7 @@ describe('parseMachineFile', () => {
     ).toBe(true);
   });
   test('loading type and unknown loading fields', () => {
-    expect(err(file({ exercise: 'leg-press', loading: { type: 'free' } }))).toMatch(/^Machine 1: loading type/);
+    expect(err(file({ exercise: 'leg-press', loading: { type: 'free', start: 20, step: 2.5, max: 100 } }))).toMatch(/^Machine 1: loading type/);
     expect(err(file({ exercise: 'leg-press' }))).toMatch(/^Machine 1: loading/);
     expect(err(file({ exercise: 'leg-press', loading: { type: 'plate', base: 0, step: 5, x: 1 } }))).toBe(
       'Machine 1: unknown loading field "x"',
@@ -171,5 +171,40 @@ describe('stack add-ons', () => {
     expect(err(withAddOns([2, 2]))).toBe('Machine 1: addOns must not contain duplicates');
     expect(err(withAddOns([1, 2, 3, 4]))).toMatch(/at most 3/);
     expect(err(withAddOns(2))).toMatch(/must be an array/);
+  });
+});
+
+describe('gym files', () => {
+  test('a gym name is read in a batch; an empty gym file is allowed, an empty machine file is not', () => {
+    const gym = JSON.stringify({ format: 'rwtm-machine', version: 1, gym: { name: ' Kamppi ' }, machines: [] });
+    const r = parseMachineBatch([{ name: 'g.json', text: gym }], BUILT_IN_CATALOG);
+    expect(r).toMatchObject({ gymName: 'Kamppi', machines: [], errors: [] });
+    expect(err(JSON.stringify({ format: 'rwtm-machine', version: 1, machines: [] }))).toBe('"machines" must be a non-empty array');
+    expect(err(file(stack([5]), { gym: { name: '' } }))).toBe('gym name must be a non-empty string');
+    expect(err(file(stack([5]), { gym: { name: 'K', city: 'x' } }))).toBe('unknown gym field "city"');
+  });
+
+  test('free-weight and bodyweight entries and hidden are read, and must fit the exercise', () => {
+    const r = parseMachineFile(
+      JSON.stringify({
+        format: 'rwtm-machine',
+        version: 1,
+        machines: [
+          { exercise: 'deadlift', loading: { type: 'free', start: 20, step: 2.5, max: 200 }, hidden: true },
+          { exercise: 'pull-up', loading: { type: 'bodyweight', step: 2.5, max: 40 } },
+          { exercise: 'dumbbell-curl', loading: { type: 'free', start: 2, step: 1, max: 30, bigStepFrom: 10, bigStep: 2 } },
+        ],
+      }),
+      BUILT_IN_CATALOG,
+    );
+    expect(r.ok && r.machines.map((m) => [m.catalogId, m.loading.type, m.hidden ?? false])).toEqual([
+      ['deadlift', 'free', true],
+      ['pull-up', 'bodyweight', false],
+      ['dumbbell-curl', 'free', false],
+    ]);
+    expect(err(file({ exercise: 'pull-up', loading: { type: 'stack', weights: [5] } }))).toBe(
+      'Machine 1: loading type "stack" does not fit a bodyweight exercise',
+    );
+    expect(err(file({ ...stack([5]), hidden: 'yes' }))).toBe('Machine 1: hidden must be true or false');
   });
 });

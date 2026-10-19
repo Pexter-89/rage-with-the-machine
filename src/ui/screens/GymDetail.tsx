@@ -2,15 +2,18 @@ import { useRef, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { getCatalog } from '../../db/catalogRepo';
 import { db } from '../../db/db';
-import { listGymMachines, saveGymExercise } from '../../db/gymRepo';
+import { exportGymFile, listGymMachines, saveGymExercise } from '../../db/gymRepo';
 import { CATEGORIES } from '../../domain/catalog';
 import type { CatalogExercise } from '../../domain/types';
 import ImportMachineSheet from '../components/ImportMachineSheet';
+import { oneLine } from '../lib/errors';
+import { shareOrDownload } from '../lib/share';
 import TopBar from '../components/TopBar';
 import { navigate } from '../router';
 
 export default function GymDetail({ gymId }: { gymId: string }) {
-  const [importing, setImporting] = useState<null | { files?: File[] }>(null);
+  const [importing, setImporting] = useState<null | { files?: File[]; replace?: boolean }>(null);
+  const [exportError, setExportError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const data = useLiveQuery(async () => {
     const gym = await db.gyms.get(gymId);
@@ -32,6 +35,18 @@ export default function GymDetail({ gymId }: { gymId: string }) {
   const byId = new Map(catalog.map((e) => [e.id, e]));
   const freeLike = catalog.filter((e) => (e.kind === 'free' || e.kind === 'bodyweight') && e.defaultLoading);
   const overrideOf = (e: CatalogExercise) => mine.find((ge) => ge.catalogId === e.id);
+
+  async function exportGym() {
+    setExportError(null);
+    try {
+      const file = await exportGymFile(gymId);
+      const slug = (gym?.name ?? 'gym').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'gym';
+      const blob = new Blob([JSON.stringify(file, null, 2)], { type: 'application/json' });
+      await shareOrDownload(`rwtm-gym-${slug}.json`, blob);
+    } catch (e) {
+      setExportError(oneLine(e));
+    }
+  }
 
   async function toggleHidden(e: CatalogExercise) {
     const o = overrideOf(e);
@@ -66,6 +81,24 @@ export default function GymDetail({ gymId }: { gymId: string }) {
           );
         })}
       </ul>
+
+      <h2 className="section-title">Gym file</h2>
+      <p className="hint left">
+        Send this gym to someone, or give the file to Claude to edit and load it back with Replace.
+      </p>
+      <div className="nav-row">
+        <button className="btn btn-ghost" onClick={() => void exportGym()}>
+          Export gym file
+        </button>
+        <button className="btn btn-ghost" onClick={() => setImporting({ replace: true })}>
+          Replace from file
+        </button>
+      </div>
+      {exportError && (
+        <p className="error" role="alert">
+          {exportError}
+        </p>
+      )}
 
       <h2 className="section-title">Free weights &amp; bodyweight</h2>
       {CATEGORIES.map((c) => {
@@ -125,6 +158,7 @@ export default function GymDetail({ gymId }: { gymId: string }) {
 
       {importing && (
         <ImportMachineSheet
+          mode={importing.replace ? 'replace' : 'add'}
           gymId={gymId}
           initialFiles={importing.files}
           onClose={() => setImporting(null)}
