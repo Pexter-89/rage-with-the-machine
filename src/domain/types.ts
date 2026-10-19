@@ -43,6 +43,8 @@ export interface Session {
   startedAt: number;
   endedAt: number | null;
   lastActivityAt: number;
+  /** Body weight in kg, if the user noted it during the session. Absent in older data. */
+  bodyweight?: number | null;
 }
 export interface SetEntry {
   id: string;
@@ -63,6 +65,8 @@ export interface PickerItem {
   gymExerciseId: string | null;
   name: string;
   label: string;
+  /** The machine's notes at this gym (seat position etc.); '' for catalogue items. */
+  notes: string;
   category: Category;
   equipment: Equipment;
   loading: Loading;

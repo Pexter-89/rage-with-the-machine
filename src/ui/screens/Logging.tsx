@@ -2,12 +2,21 @@ import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 're
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../../db/db';
 import { getCatalog } from '../../db/catalogRepo';
-import { resolveItem } from '../../db/gymRepo';
-import { SessionEndedError, addSet, deleteSet, getLastTime, prefill, setsForItem, updateSet } from '../../db/sessionRepo';
+import { resolveItem, setGymExerciseNotes } from '../../db/gymRepo';
+import {
+  SessionEndedError,
+  addSet,
+  deleteSet,
+  getLastTime,
+  prefill,
+  recordHistory,
+  setsForItem,
+  updateSet,
+} from '../../db/sessionRepo';
 import type { LastTime } from '../../db/sessionRepo';
 import { formatDate } from '../../domain/dates';
 import { parseRepsInput, parseWeightInput, reachableValues, snapToWheel, wheelValues } from '../../domain/loading';
-import { formatSummary, formatWeight, summarizeSets } from '../../domain/metrics';
+import { formatSetList, formatWeight, recordSetIds } from '../../domain/metrics';
 import type { PickerItem, SetEntry } from '../../domain/types';
 import ConfirmSheet from '../components/ConfirmSheet';
 import AddOnStack from '../components/AddOnStack';
@@ -25,7 +34,15 @@ const REPS = Array.from({ length: 50 }, (_, i) => i + 1);
 type Loaded =
   | { status: 'home' }
   | { status: 'session' }
-  | { status: 'ready'; item: PickerItem; sets: SetEntry[]; last: LastTime | null; lastGymName: string };
+  | {
+      status: 'ready';
+      item: PickerItem;
+      sets: SetEntry[];
+      last: LastTime | null;
+      lastGymName: string;
+      /** Earlier sessions' sets that records are measured against; empty when records do not apply. */
+      history: SetEntry[];
+    };
 
 interface Row {
   weight: number;
@@ -94,6 +111,46 @@ const WheelPair = forwardRef<PairHandle, PairProps>(function WheelPair({ item, r
   );
 });
 
+/** The next row's values; a stack snaps values taken from last time onto what this machine can make. */
+function nextRow(item: PickerItem, sets: SetEntry[], last: LastTime | null): (Row & { fromLast: boolean }) | null {
+  const p = prefill(sets, last);
+  if (!p) return null;
+  const snap = p.snap && item.loading.type === 'stack';
+  return { ...p, weight: snap ? snapToWheel(reachableValues(item.loading), p.weight) : p.weight };
+}
+
+function NoteSheet({ id, notes, onClose }: { id: string; notes: string; onClose(): void }) {
+  const [text, setText] = useState(notes);
+  const [error, setError] = useState<string | null>(null);
+  async function save() {
+    try {
+      await setGymExerciseNotes(id, text);
+      onClose();
+    } catch (e) {
+      setError(oneLine(e));
+    }
+  }
+  return (
+    <>
+      <textarea
+        rows={4}
+        aria-label="Machine note"
+        placeholder="Seat height, pin positions…"
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+      />
+      {error && (
+        <p className="error" role="alert">
+          {error}
+        </p>
+      )}
+      <button className="btn btn-primary" onClick={() => void save()}>
+        Save
+      </button>
+    </>
+  );
+}
+
 /** A failed write shows one line inline; a write into a session that has ended goes home. */
 function writeFailed(e: unknown, show: (text: string) => void): void {
   if (e instanceof SessionEndedError) navigate({ name: 'home' });
@@ -143,12 +200,17 @@ export default function Logging({ sessionId, itemKey }: { sessionId: string; ite
   const data = useLiveQuery<Loaded>(async () => {
     const session = await db.sessions.get(sessionId);
     if (!session || session.endedAt !== null) return { status: 'home' };
-    const item = await resolveItem(session.gymId, itemKey, await getCatalog());
+    const catalog = await getCatalog();
+    const item = await resolveItem(session.gymId, itemKey, catalog);
     if (!item) return { status: 'session' };
     const sets = await setsForItem(sessionId, item);
     const last = await getLastTime(item.catalogId, session.gymId, sessionId);
     const lastGym = last ? await db.gyms.get(last.gymId) : undefined;
-    return { status: 'ready', item, sets, last, lastGymName: lastGym?.name ?? '' };
+    // Records are e1RM records, which mean nothing for bodyweight reps or assist weight.
+    const kind = catalog.find((c) => c.id === item.catalogId)?.kind;
+    const history =
+      kind === 'bodyweight' || item.assisted ? [] : await recordHistory(item, kind === 'machine', sessionId);
+    return { status: 'ready', item, sets, last, lastGymName: lastGym?.name ?? '', history };
   }, [sessionId, itemKey]);
 
   // Computed once, when the data first loads; later live updates never overwrite the wheels.
@@ -157,6 +219,7 @@ export default function Logging({ sessionId, itemKey }: { sessionId: string; ite
   const inFlight = useRef(false);
   const pair = useRef<PairHandle>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingNote, setEditingNote] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   /** When the last set was completed on this screen; leaving the screen drops the timer. */
   const [restSince, setRestSince] = useState<number | null>(null);
@@ -174,27 +237,15 @@ export default function Logging({ sessionId, itemKey }: { sessionId: string; ite
     </main>
   );
   if (!data || data.status !== 'ready') return loadingScreen;
-  const { item, sets, last, lastGymName } = data;
+  const { item, sets, last, lastGymName, history } = data;
 
   if (!row) {
-    const values = wheelValues(item.loading);
-    const p = prefill(sets, last);
-    setRow(
-      p
-        ? {
-            // Snap only when the prefill came from last time; current-session sets keep typed values.
-            weight:
-              item.loading.type === 'stack' && sets.length === 0
-                ? snapToWheel(reachableValues(item.loading), p.weight)
-                : p.weight,
-            reps: p.reps,
-          }
-        : { weight: values[0] ?? 0, reps: 10 },
-    );
+    const p = nextRow(item, sets, last);
+    setRow(p ? { weight: p.weight, reps: p.reps } : { weight: wheelValues(item.loading)[0] ?? 0, reps: 10 });
     return loadingScreen;
   }
 
-  const lastSummary = last ? summarizeSets(last.sets) : null;
+  const records = recordSetIds(sets, history);
   const editing = sets.find((s) => s.id === editingId);
   const deleting = sets.find((s) => s.id === deletingId);
 
@@ -204,7 +255,10 @@ export default function Logging({ sessionId, itemKey }: { sessionId: string; ite
     setBusy(true);
     try {
       const v = pair.current?.flush() ?? row;
-      await addSet(sessionId, item, v.weight, v.reps, Date.now());
+      const added = await addSet(sessionId, item, v.weight, v.reps, Date.now());
+      // Following last time's sets moves the wheels on; otherwise they stay on the set just done.
+      const next = nextRow(item, [...sets, added], last);
+      if (next?.fromLast) setRow({ weight: next.weight, reps: next.reps });
       setRestSince(Date.now());
       setError(null);
     } catch (e) {
@@ -224,11 +278,20 @@ export default function Logging({ sessionId, itemKey }: { sessionId: string; ite
     <main className="screen logging">
       <TopBar route={route} title={item.name} />
       {item.label && <p className="hint">{item.label}</p>}
+      {item.gymExerciseId && (
+        <button
+          className={item.notes ? 'btn btn-quiet machine-note' : 'btn btn-quiet btn-small machine-note'}
+          aria-label={item.notes ? `Machine note: ${item.notes}` : 'Add machine note'}
+          onClick={() => setEditingNote(true)}
+        >
+          {item.notes || '＋ Note'}
+        </button>
+      )}
 
-      {last && lastSummary && (
+      {last && last.sets.length > 0 && (
         <div className="last-time">
           <div>{`Last time · ${formatDate(last.date)} · ${lastGymName}`}</div>
-          <div className="card-summary">{formatSummary(lastSummary, last.sets[0].unit)}</div>
+          <div className="last-sets">{formatSetList(last.sets)}</div>
         </div>
       )}
 
@@ -239,6 +302,12 @@ export default function Logging({ sessionId, itemKey }: { sessionId: string; ite
           <li key={s.id} className="split">
             <button className="btn btn-left done-set" onClick={() => setEditingId(s.id)}>
               {`${i + 1}  ${setText(s)}`}
+              {records.has(s.id) && (
+                <>
+                  {' '}
+                  <span className="record">PR</span>
+                </>
+              )}
             </button>
             <button className="btn split-x" aria-label={`Delete set ${i + 1}`} onClick={() => setDeletingId(s.id)}>
               ✕
@@ -265,6 +334,11 @@ export default function Logging({ sessionId, itemKey }: { sessionId: string; ite
         ‹ Back to session
       </button>
 
+      <Sheet open={editingNote} title="Machine note" onClose={() => setEditingNote(false)}>
+        {editingNote && item.gymExerciseId && (
+          <NoteSheet id={item.gymExerciseId} notes={item.notes} onClose={() => setEditingNote(false)} />
+        )}
+      </Sheet>
       <Sheet open={!!editing} title="Edit set" onClose={() => setEditingId(null)}>
         {editing && <EditSheet key={editing.id} item={item} set={editing} onClose={() => setEditingId(null)} />}
       </Sheet>

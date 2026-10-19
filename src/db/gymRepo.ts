@@ -67,6 +67,10 @@ export async function saveGymExercise(ge: Omit<GymExercise, 'id'> & { id?: strin
   return saved;
 }
 
+export async function setGymExerciseNotes(id: string, notes: string): Promise<void> {
+  await db.gymExercises.update(id, { notes: notes.trim() });
+}
+
 const sameMachine = (ge: GymExercise, m: ParsedMachine) =>
   ge.catalogId === m.catalogId && ge.label === m.label && sameLoading(ge.loading, m.loading);
 
@@ -244,6 +248,7 @@ function itemFor(entry: CatalogExercise, ge: GymExercise | null): PickerItem {
     gymExerciseId: ge ? ge.id : null,
     name: entry.name,
     label: ge ? ge.label : '',
+    notes: ge ? ge.notes : '',
     category: entry.category,
     equipment: equipmentOf(entry),
     loading: structuredClone(loading),

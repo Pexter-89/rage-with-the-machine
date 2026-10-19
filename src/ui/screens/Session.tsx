@@ -2,18 +2,79 @@ import { useEffect, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../../db/db';
 import { getCatalog } from '../../db/catalogRepo';
-import { SessionEndedError, deleteExerciseSets, finishSession, sessionExercises } from '../../db/sessionRepo';
+import {
+  SessionEndedError,
+  deleteExerciseSets,
+  finishSession,
+  lastBodyweight,
+  sessionExercises,
+  setSessionBodyweight,
+} from '../../db/sessionRepo';
 import { resolveItem } from '../../db/gymRepo';
 import { formatTime } from '../../domain/dates';
-import { formatSummary, summarizeSets } from '../../domain/metrics';
+import { parseWeightInput } from '../../domain/loading';
+import { formatSummary, formatWeight, summarizeSets } from '../../domain/metrics';
 import ConfirmSheet from '../components/ConfirmSheet';
 import TopBar from '../components/TopBar';
+import { oneLine } from '../lib/errors';
 import { navigate, type Route } from '../router';
 
 function formatElapsed(ms: number): string {
   const min = Math.max(0, Math.floor(ms / 60_000));
   if (min < 60) return `${min} min`;
   return `${Math.floor(min / 60)} h ${String(min % 60).padStart(2, '0')} min`;
+}
+
+/** Optional body weight for the session: saved on Enter or when the field loses focus; emptying it clears it. */
+function BodyweightField({ sessionId, saved, previous }: { sessionId: string; saved: number | null; previous: number | null }) {
+  const show = (kg: number | null) => (kg === null ? '' : formatWeight(kg));
+  const [text, setText] = useState(() => show(saved));
+  const [error, setError] = useState<string | null>(null);
+
+  async function commit() {
+    const kg = text.trim() === '' ? null : parseWeightInput(text);
+    if (kg !== null && !(kg > 0 && kg < 500)) {
+      setText(show(saved));
+      return;
+    }
+    if (kg === saved) {
+      setText(show(saved));
+      return;
+    }
+    try {
+      await setSessionBodyweight(sessionId, kg);
+      setText(show(kg));
+      setError(null);
+    } catch (e) {
+      if (e instanceof SessionEndedError) navigate({ name: 'home' });
+      else setError(oneLine(e));
+    }
+  }
+
+  return (
+    <>
+      <label className="bodyweight">
+        <span>BW</span>
+        <input
+          inputMode="decimal"
+          aria-label="Body weight, kg"
+          placeholder={previous === null ? '' : formatWeight(previous)}
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          onBlur={() => void commit()}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') e.currentTarget.blur();
+          }}
+        />
+        <span>kg</span>
+      </label>
+      {error && (
+        <p className="error" role="alert">
+          {error}
+        </p>
+      )}
+    </>
+  );
 }
 
 export default function Session({ sessionId }: { sessionId: string }) {
@@ -37,7 +98,7 @@ export default function Session({ sessionId }: { sessionId: string }) {
         };
       }),
     );
-    return { session, gymName: gym?.name ?? '', cards };
+    return { session, gymName: gym?.name ?? '', cards, previousBodyweight: await lastBodyweight(sessionId) };
   }, [sessionId]);
 
   const [now, setNow] = useState(() => Date.now());
@@ -59,7 +120,7 @@ export default function Session({ sessionId }: { sessionId: string }) {
         <TopBar route={route} />
       </main>
     );
-  const { session, gymName, cards } = data;
+  const { session, gymName, cards, previousBodyweight } = data;
   const removingCard = cards.find((c) => c.key === removing);
 
   async function finish() {
@@ -74,7 +135,10 @@ export default function Session({ sessionId }: { sessionId: string }) {
           Finish
         </button>
       </TopBar>
-      <p className="hint">{`Started ${formatTime(session.startedAt)} · ${formatElapsed(now - session.startedAt)}`}</p>
+      <div className="session-meta">
+        <p className="hint left">{`Started ${formatTime(session.startedAt)} · ${formatElapsed(now - session.startedAt)}`}</p>
+        <BodyweightField sessionId={sessionId} saved={session.bodyweight ?? null} previous={previousBodyweight} />
+      </div>
 
       <ul className="list session-cards">
         {cards.map((c) => (

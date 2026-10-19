@@ -116,3 +116,33 @@ test('the ✕ on a logged exercise deletes its sets from the session after confi
   await vi.waitFor(async () => expect(await db.sets.count()).toBe(0));
   await vi.waitFor(() => expect(screen.queryByRole('button', { name: /^Leg Press/ })).toBeNull());
 });
+
+test('body weight is saved on Enter (decimal comma works), shown again, and cleared when emptied', async () => {
+  const user = userEvent.setup();
+  const { s } = await seed();
+  const view = render(<Session sessionId={s.id} />);
+  const field = await screen.findByRole('textbox', { name: 'Body weight, kg' });
+  await user.type(field, '82,5{Enter}');
+  await vi.waitFor(async () => expect((await db.sessions.get(s.id))?.bodyweight).toBe(82.5));
+  view.unmount();
+  render(<Session sessionId={s.id} />);
+  const again = await screen.findByRole('textbox', { name: 'Body weight, kg' });
+  expect(again).toHaveValue('82.5');
+  await user.clear(again);
+  await user.tab();
+  await vi.waitFor(async () => expect((await db.sessions.get(s.id))?.bodyweight).toBeNull());
+});
+
+test('body weight: nonsense is dropped, and the last noted weight is the placeholder', async () => {
+  const user = userEvent.setup();
+  const g = await addGym('Kamppi');
+  await db.sessions.add({ id: 'old', gymId: g.id, startedAt: 1, endedAt: 2, lastActivityAt: 1, bodyweight: 81 });
+  const s = await startSession(g.id, Date.now());
+  render(<Session sessionId={s.id} />);
+  const field = await screen.findByRole('textbox', { name: 'Body weight, kg' });
+  expect(field).toHaveAttribute('placeholder', '81');
+  await user.type(field, 'abc');
+  await user.tab();
+  await vi.waitFor(() => expect(field).toHaveValue(''));
+  expect((await db.sessions.get(s.id))?.bodyweight).toBeUndefined();
+});
