@@ -23,7 +23,8 @@ export function loadingSummary(l: Loading): string {
   switch (l.type) {
     case 'stack': {
       const w = [...l.weights].sort((a, b) => a - b);
-      return `Stack ${formatWeight(w[0])}–${formatWeight(w[w.length - 1])} ${l.unit === 'level' ? 'L' : 'kg'}`;
+      const extra = l.addOns?.length ? ` + ${l.addOns.map(formatWeight).join(' / ')} add-on` : '';
+      return `Stack ${formatWeight(w[0])}–${formatWeight(w[w.length - 1])} ${l.unit === 'level' ? 'L' : 'kg'}${extra}`;
     }
     case 'plate':
       return `Plate, sled ${formatWeight(l.base)} kg, +${formatWeight(l.step)}`;

@@ -6,10 +6,11 @@ import { resolveItem } from '../../db/gymRepo';
 import { SessionEndedError, addSet, deleteSet, getLastTime, prefill, setsForItem, updateSet } from '../../db/sessionRepo';
 import type { LastTime } from '../../db/sessionRepo';
 import { formatDate } from '../../domain/dates';
-import { parseRepsInput, parseWeightInput, snapToWheel, wheelValues } from '../../domain/loading';
+import { parseRepsInput, parseWeightInput, reachableValues, snapToWheel, wheelValues } from '../../domain/loading';
 import { formatSummary, formatWeight, summarizeSets } from '../../domain/metrics';
 import type { PickerItem, SetEntry } from '../../domain/types';
 import ConfirmSheet from '../components/ConfirmSheet';
+import AddOnStack from '../components/AddOnStack';
 import PlatePicker from '../components/PlatePicker';
 import RestTimer from '../components/RestTimer';
 import Sheet from '../components/Sheet';
@@ -61,6 +62,15 @@ const WheelPair = forwardRef<PairHandle, PairProps>(function WheelPair({ item, r
     <>
       {item.loading.type === 'plates' && !item.assisted ? (
         <PlatePicker ref={w} loading={item.loading} value={row.weight} onChange={setWeight} />
+      ) : item.loading.type === 'stack' && item.loading.unit !== 'level' && item.loading.addOns?.length ? (
+        <AddOnStack
+          ref={w}
+          label={item.assisted ? 'STACK ASSIST KG' : 'STACK KG'}
+          weights={wheelValues(item.loading)}
+          addOns={item.loading.addOns}
+          value={row.weight}
+          onChange={setWeight}
+        />
       ) : (
         <Wheel
           ref={w}
@@ -173,7 +183,10 @@ export default function Logging({ sessionId, itemKey }: { sessionId: string; ite
       p
         ? {
             // Snap only when the prefill came from last time; current-session sets keep typed values.
-            weight: item.loading.type === 'stack' && sets.length === 0 ? snapToWheel(values, p.weight) : p.weight,
+            weight:
+              item.loading.type === 'stack' && sets.length === 0
+                ? snapToWheel(reachableValues(item.loading), p.weight)
+                : p.weight,
             reps: p.reps,
           }
         : { weight: values[0] ?? 0, reps: 10 },

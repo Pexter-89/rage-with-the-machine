@@ -37,6 +37,7 @@ interface Form {
   max: string;
   plates: string;
   sides: 1 | 2;
+  addOns: string;
 }
 
 const slug = (name: string) =>
@@ -96,11 +97,17 @@ function parseList(text: string, what: string): number[] | string {
 
 function formFromLoading(
   l: Loading,
-): Pick<Form, 'loadingType' | 'weights' | 'unit' | 'base' | 'step' | 'start' | 'max' | 'plates' | 'sides'> {
-  const blank = { weights: '', unit: 'kg' as const, base: '', step: '', start: '', max: '', plates: listText(DEFAULT_PLATES), sides: 2 as const };
+): Pick<Form, 'loadingType' | 'weights' | 'unit' | 'base' | 'step' | 'start' | 'max' | 'plates' | 'sides' | 'addOns'> {
+  const blank = { weights: '', unit: 'kg' as const, base: '', step: '', start: '', max: '', plates: listText(DEFAULT_PLATES), sides: 2 as const, addOns: '' };
   switch (l.type) {
     case 'stack':
-      return { ...blank, loadingType: 'stack', weights: [...l.weights].sort((a, b) => a - b).map(formatWeight).join(', '), unit: l.unit ?? 'kg' };
+      return {
+        ...blank,
+        loadingType: 'stack',
+        weights: [...l.weights].sort((a, b) => a - b).map(formatWeight).join(', '),
+        unit: l.unit ?? 'kg',
+        addOns: l.addOns ? listText(l.addOns) : '',
+      };
     case 'plate':
       return { ...blank, loadingType: 'plate', base: formatWeight(l.base), step: formatWeight(l.step) };
     case 'plates':
@@ -127,6 +134,7 @@ const EMPTY: Form = {
   max: '',
   plates: listText(DEFAULT_PLATES),
   sides: 2,
+  addOns: '',
 };
 
 export default function ExerciseEdit({ gymId, geId, catalogId }: Props) {
@@ -211,7 +219,11 @@ export default function ExerciseEdit({ gymId, geId, catalogId }: Props) {
     if (lt === 'stack') {
       const weights = parseList(form!.weights, 'weight');
       if (typeof weights === 'string') return weights;
-      return { type: 'stack', weights, unit: form!.unit };
+      if (form!.unit === 'level' || !form!.addOns.trim()) return { type: 'stack', weights, unit: form!.unit };
+      const addOns = parseList(form!.addOns, 'add-on weight');
+      if (typeof addOns === 'string') return addOns;
+      if (addOns.length > 3) return 'At most 3 add-on weights';
+      return { type: 'stack', weights, unit: form!.unit, addOns };
     }
     if (lt === 'plates') {
       const base = num(form!.base);
@@ -399,6 +411,12 @@ export default function ExerciseEdit({ gymId, geId, catalogId }: Props) {
                 </button>
               ))}
             </div>
+                      {form.unit === 'kg' && (
+              <>
+                {field('Add-on weights (kg, optional)', 'addOns', { inputMode: 'decimal' })}
+                <p className="hint">A small weight a switch or lever adds on top of the stack, e.g. 2.5. Leave empty if none.</p>
+              </>
+            )}
           </>
         )}
         {lt === 'plate' && (

@@ -49,6 +49,32 @@ export function wheelValues(l: Loading): number[] {
   }
 }
 
+/** Every sum of a subset of the add-ons, with the subset; the empty subset first. */
+export function addOnCombos(addOns: number[]): { on: boolean[]; sum: number }[] {
+  const out: { on: boolean[]; sum: number }[] = [];
+  for (let mask = 0; mask < 1 << addOns.length; mask++) {
+    const on = addOns.map((_, i) => (mask & (1 << i)) !== 0);
+    out.push({ on, sum: round2(addOns.reduce((s, a, i) => s + (on[i] ? a : 0), 0)) });
+  }
+  return out;
+}
+
+/**
+ * Which add-ons are switched in for a total of `w` on a stack: the first combination (fewest add-ons first)
+ * whose remainder is a stack weight. None switched in when no combination fits.
+ */
+export function addOnsFor(weights: number[], addOns: number[], w: number): boolean[] {
+  const combos = addOnCombos(addOns).sort((a, b) => a.on.filter(Boolean).length - b.on.filter(Boolean).length);
+  return (combos.find((c) => weights.includes(round2(w - c.sum))) ?? combos[0]).on;
+}
+
+/** Every total a loading can make: for a stack with add-ons, each stack weight plus each add-on combination. */
+export function reachableValues(l: Loading): number[] {
+  if (l.type !== 'stack' || !l.addOns?.length) return wheelValues(l);
+  const sums = addOnCombos(l.addOns).map((c) => c.sum);
+  return [...new Set(l.weights.flatMap((w) => sums.map((s) => round2(w + s))))].sort((a, b) => a - b);
+}
+
 /** Nearest value on the wheel; ties round up. */
 export function snapToWheel(values: number[], w: number): number {
   let best = values[0];

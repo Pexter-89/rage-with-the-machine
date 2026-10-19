@@ -14,6 +14,7 @@ export type ParseResult =
 
 const MAX_STACK_WEIGHTS = 200;
 const MAX_PLATE_SIZES = 20;
+const MAX_ADD_ONS = 3;
 const MIN_PLATE_STEP = 0.25;
 const KEBAB = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
@@ -101,7 +102,7 @@ function parseNewExercise(v: unknown): CatalogExercise {
 function parseLoading(v: unknown): Loading {
   if (!isRecord(v)) return fail('loading is required and must be an object');
   if (v.type === 'stack') {
-    unknownField(v, ['type', 'weights', 'unit'], 'loading ');
+    unknownField(v, ['type', 'weights', 'unit', 'addOns'], 'loading ');
     const w = v.weights;
     if (!Array.isArray(w) || w.length === 0) return fail('stack weights must be a non-empty array');
     if (w.length > MAX_STACK_WEIGHTS) return fail(`stack weights may have at most ${MAX_STACK_WEIGHTS} values`);
@@ -109,7 +110,15 @@ function parseLoading(v: unknown): Loading {
     const weights = [...(w as number[])].sort((a, b) => a - b);
     if (weights.some((x, i) => i > 0 && x === weights[i - 1])) return fail('stack weights must not contain duplicates');
     if (v.unit !== undefined && v.unit !== 'kg' && v.unit !== 'level') return fail('stack unit must be "kg" or "level"');
-    return v.unit === undefined ? { type: 'stack', weights } : { type: 'stack', weights, unit: v.unit };
+    const out: Loading = v.unit === undefined ? { type: 'stack', weights } : { type: 'stack', weights, unit: v.unit };
+    const a = v.addOns;
+    if (a === undefined || a === null || (Array.isArray(a) && a.length === 0)) return out;
+    if (v.unit === 'level') return fail('addOns need a stack in kg, not levels');
+    if (!Array.isArray(a) || a.length > MAX_ADD_ONS) return fail(`addOns must be an array of at most ${MAX_ADD_ONS} weights`);
+    if (!a.every((x) => isNum(x) && x > 0)) return fail('addOns must be positive numbers');
+    const addOns = [...(a as number[])].sort((x, y) => x - y);
+    if (addOns.some((x, i) => i > 0 && x === addOns[i - 1])) return fail('addOns must not contain duplicates');
+    return { ...out, addOns };
   }
   if (v.type === 'plate') {
     unknownField(v, ['type', 'base', 'step'], 'loading ');
