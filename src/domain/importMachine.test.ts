@@ -155,3 +155,21 @@ describe('parseMachineFile', () => {
   test('JSON null newExercise means none', () =>
     expect(parseMachineFile(file({ ...stack([5]), newExercise: null }), BUILT_IN_CATALOG).ok).toBe(true));
 });
+
+describe('stack add-ons', () => {
+  const withAddOns = (addOns: unknown, unit?: string) =>
+    file({ exercise: 'lat-pulldown', loading: { type: 'stack', weights: [5, 10], ...(unit ? { unit } : {}), addOns } });
+  test('accepted and sorted; empty means none', () => {
+    const r = parseMachineFile(withAddOns([2.5, 1.25]), BUILT_IN_CATALOG);
+    expect(r.ok && r.machines[0].loading).toEqual({ type: 'stack', weights: [5, 10], addOns: [1.25, 2.5] });
+    const none = parseMachineFile(withAddOns([]), BUILT_IN_CATALOG);
+    expect(none.ok && none.machines[0].loading).toEqual({ type: 'stack', weights: [5, 10] });
+  });
+  test('rejected on level stacks, with bad values, duplicates or too many', () => {
+    expect(err(withAddOns([2], 'level'))).toBe('Machine 1: addOns need a stack in kg, not levels');
+    expect(err(withAddOns([0]))).toBe('Machine 1: addOns must be positive numbers');
+    expect(err(withAddOns([2, 2]))).toBe('Machine 1: addOns must not contain duplicates');
+    expect(err(withAddOns([1, 2, 3, 4]))).toMatch(/at most 3/);
+    expect(err(withAddOns(2))).toMatch(/must be an array/);
+  });
+});

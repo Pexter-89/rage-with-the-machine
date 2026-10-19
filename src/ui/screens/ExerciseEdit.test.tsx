@@ -248,3 +248,14 @@ test('a barbell defaults to plates on a 20 kg bar', async () => {
   expect(screen.getByLabelText('Bar weight (kg)')).toHaveValue('20');
   expect(screen.getByLabelText('Plates (kg)')).toHaveValue('2.5 5 10 15 20 25');
 });
+
+test('a stack can have an add-on weight', async () => {
+  const user = userEvent.setup();
+  const g = await addGym('K');
+  render(<ExerciseEdit gymId={g.id} geId="new" catalogId="lat-pulldown" />);
+  await user.type(await screen.findByLabelText('Stack weights'), '5 10 15');
+  await user.type(screen.getByLabelText('Add-on weights (kg, optional)'), '2,5');
+  await user.click(screen.getByRole('button', { name: 'Save' }));
+  await vi.waitFor(async () => expect(await db.gymExercises.count()).toBe(1));
+  expect((await db.gymExercises.toArray())[0].loading).toEqual({ type: 'stack', weights: [5, 10, 15], unit: 'kg', addOns: [2.5] });
+});

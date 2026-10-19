@@ -365,3 +365,27 @@ test('a rest timer appears once a set is completed and is gone when the screen i
   await screen.findByRole('button', { name: 'Complete set' });
   expect(screen.queryByRole('timer')).toBeNull();
 });
+
+test('stack add-on: the switch adds its weight to the logged total, and last time switches it back on', async () => {
+  const user = userEvent.setup();
+  const g = await addGym('Kamppi');
+  const ge = await saveGymExercise({
+    gymId: g.id, catalogId: 'lat-pulldown', label: '', notes: '',
+    loading: { type: 'stack', weights: [40, 45, 50], addOns: [2.5] }, hidden: false,
+  });
+  await addOldSets(g.id, ge.id, [[47.5, 10]], 'lat-pulldown');
+  const s = await startSession(g.id, Date.now());
+  render(<Logging sessionId={s.id} itemKey={ge.id} />);
+  const sw = await screen.findByRole('switch', { name: 'Add-on 2.5 kg' });
+  expect(sw).toHaveAttribute('aria-checked', 'true');
+  expect(screen.getByRole('button', { name: 'STACK KG 45' })).toBeInTheDocument();
+  expect(screen.getByText('45 + 2.5 = 47.5 kg')).toBeInTheDocument();
+  await user.click(screen.getByRole('button', { name: 'Complete set' }));
+  await vi.waitFor(async () => expect((await db.sets.where('sessionId').equals(s.id).toArray())[0]?.weight).toBe(47.5));
+  await user.click(sw);
+  expect(sw).toHaveAttribute('aria-checked', 'false');
+  await user.click(screen.getByRole('button', { name: 'Complete set' }));
+  await vi.waitFor(async () =>
+    expect((await db.sets.where('sessionId').equals(s.id).sortBy('order')).map((x) => x.weight)).toEqual([47.5, 45]),
+  );
+});

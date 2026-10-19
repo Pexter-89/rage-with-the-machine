@@ -1,4 +1,4 @@
-import { wheelValues, snapToWheel, parseWeightInput, parseRepsInput, sameLoading, plateTotal, platesFor } from './loading';
+import { wheelValues, snapToWheel, parseWeightInput, parseRepsInput, sameLoading, plateTotal, platesFor, addOnsFor, reachableValues } from './loading';
 import { DUMBBELL_LOADING, BARBELL_LOADING, BODYWEIGHT_LOADING } from './catalog';
 test('stack sorted', () => expect(wheelValues({type:'stack',weights:[15,5,10]})).toEqual([5,10,15]));
 test('plate from base', () => {
@@ -61,4 +61,17 @@ test('sameLoading is a deep equality, independent of key order', () => {
   expect(sameLoading({ type: 'stack', weights: [5, 10] }, { type: 'stack', weights: [5, 10, 15] })).toBe(false);
   expect(sameLoading({ type: 'stack', weights: [5, 10] }, { type: 'stack', weights: [5, 10], unit: 'level' })).toBe(false);
   expect(sameLoading({ type: 'stack', weights: [1] }, { type: 'plate', base: 1, step: 1 })).toBe(false);
+});
+
+describe('stack add-ons', () => {
+  test('addOnsFor finds the switches that make a total, preferring none', () => {
+    expect(addOnsFor([5, 10, 15], [2.5], 10)).toEqual([false]);
+    expect(addOnsFor([5, 10, 15], [2.5], 12.5)).toEqual([true]);
+    expect(addOnsFor([5, 10, 15], [1, 2], 18)).toEqual([true, true]);
+    expect(addOnsFor([5, 10, 15], [2.5], 11)).toEqual([false]); // not reachable: no switch
+  });
+  test('reachableValues adds every add-on combination to every stack weight', () => {
+    expect(reachableValues({ type: 'stack', weights: [5, 10], addOns: [2.5] })).toEqual([5, 7.5, 10, 12.5]);
+    expect(reachableValues({ type: 'stack', weights: [10, 5] })).toEqual([5, 10]);
+  });
 });
