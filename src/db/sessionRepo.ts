@@ -93,6 +93,28 @@ export async function deleteSession(id: string): Promise<void> {
   });
 }
 
+/**
+ * History editing: deletes the given sets from any session, open or ended. A session left with no sets is
+ * deleted too, so it no longer shows up in Progress.
+ */
+export async function deleteHistorySets(ids: string[]): Promise<void> {
+  await db.transaction('rw', db.sessions, db.sets, async () => {
+    const sets = (await db.sets.bulkGet(ids)).filter((s): s is SetEntry => !!s);
+    await db.sets.bulkDelete(sets.map((s) => s.id));
+    for (const sessionId of new Set(sets.map((s) => s.sessionId))) {
+      if ((await db.sets.where('sessionId').equals(sessionId).count()) === 0) await db.sessions.delete(sessionId);
+    }
+  });
+}
+
+/** Deletes every session and set; gyms, machines and settings stay. */
+export async function clearHistory(): Promise<void> {
+  await db.transaction('rw', db.sessions, db.sets, async () => {
+    await db.sets.clear();
+    await db.sessions.clear();
+  });
+}
+
 // ---- sets ----
 
 /** Must run inside a rw transaction on sessions. */

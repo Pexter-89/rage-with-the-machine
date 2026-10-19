@@ -2,6 +2,7 @@ import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { addGym } from '../../db/gymRepo';
 import { db, resetDb } from '../../db/db';
+import { formatDate } from '../../domain/dates';
 import { gymColor } from '../../domain/progress';
 import type { SetEntry } from '../../domain/types';
 import Progress from './Progress';
@@ -140,4 +141,48 @@ test('Home button navigates home', async () => {
   render(<Progress />);
   await user.click(await screen.findByRole('button', { name: '‹ Home' }));
   expect(location.hash).toBe('#/');
+});
+
+test('tapping a row opens its sets; a set is deleted on the second tap, even from an ended session', async () => {
+  const user = userEvent.setup();
+  render(<Progress />);
+  const table = await screen.findByRole('table');
+  await user.click(within(table).getAllByRole('row')[1]); // newest: Beta, two leg press sets
+  const sheet = await screen.findByRole('dialog', { name: /Beta$/ });
+  expect(within(sheet).getAllByRole('listitem')).toHaveLength(2);
+  await user.click(within(sheet).getByRole('button', { name: 'Delete Leg Press · 120 kg × 5' }));
+  expect(await db.sets.count()).toBe(4); // armed, not deleted
+  await user.click(within(sheet).getByRole('button', { name: 'Confirm delete Leg Press · 120 kg × 5' }));
+  await vi.waitFor(async () => expect(await db.sets.count()).toBe(3));
+  await vi.waitFor(() => expect(within(sheet).getAllByRole('listitem')).toHaveLength(1));
+});
+
+test('Delete all in the sheet removes only the sets the row shows', async () => {
+  const user = userEvent.setup();
+  render(<Progress />);
+  await user.selectOptions(await screen.findByLabelText('Exercise'), 'leg-press');
+  const table = await screen.findByRole('table');
+  await user.click(within(table).getByRole('button', { name: formatDate(day(0, 5)) }));
+  const sheet = await screen.findByRole('dialog', { name: /Alpha$/ });
+  await user.click(within(sheet).getByRole('button', { name: 'Delete all 1' }));
+  await user.click(within(sheet).getByRole('button', { name: 'Tap again to delete 1' }));
+  await vi.waitFor(async () => expect((await db.sets.toArray()).map((s) => s.catalogId).sort()).toEqual(['leg-press', 'leg-press', 'push-up']));
+  await vi.waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+});
+
+test('Clear all history deletes every session and set after confirming, keeping the gyms', async () => {
+  const user = userEvent.setup();
+  await db.sessions.bulkAdd([
+    { id: 's1', gymId: gA, startedAt: day(0, 5), endedAt: day(0, 5) + 3600_000, lastActivityAt: day(0, 5) },
+    { id: 's2', gymId: gB, startedAt: day(1, 9), endedAt: day(1, 9) + 3600_000, lastActivityAt: day(1, 9) },
+  ]);
+  render(<Progress />);
+  await user.click(await screen.findByRole('button', { name: 'Clear all history' }));
+  const dialog = await screen.findByRole('dialog', { name: 'Clear all history?' });
+  expect(dialog).toHaveTextContent('All 2 sessions and 4 sets at every gym will be deleted.');
+  await user.click(within(dialog).getByRole('button', { name: 'Delete all' }));
+  await vi.waitFor(async () => expect(await db.sets.count()).toBe(0));
+  expect(await db.sessions.count()).toBe(0);
+  expect(await db.gyms.count()).toBe(2);
+  expect(await screen.findByText('No sessions logged yet.')).toBeInTheDocument();
 });
