@@ -48,3 +48,23 @@ test('Delete is offered only for gyms without sessions', async () => {
   await userEvent.click(screen.getByRole('button', { name: 'Delete Empty' }));
   await vi.waitFor(async () => expect(await db.gyms.get(a.id)).toBeUndefined());
 });
+
+test('Import gym from file creates the gym with its equipment and opens it', async () => {
+  const user = userEvent.setup();
+  render(<Gyms />);
+  await user.click(await screen.findByRole('button', { name: 'Import gym from file' }));
+  const sheet = await screen.findByRole('dialog', { name: 'Import gym' });
+  await user.click(within(sheet).getByLabelText('Pasted text'));
+  await user.paste(
+    JSON.stringify({
+      format: 'rwtm-machine', version: 1, gym: { name: 'Shared gym' },
+      machines: [{ exercise: 'lat-pulldown', label: 'A', loading: { type: 'stack', weights: [5, 10] } }],
+    }),
+  );
+  expect(await within(sheet).findByLabelText('Gym name')).toHaveValue('Shared gym');
+  await user.click(within(sheet).getByRole('button', { name: 'Create gym' }));
+  await vi.waitFor(async () => expect((await listGyms()).map((x) => x.name)).toEqual(['Shared gym']));
+  const gym = (await listGyms())[0];
+  expect(await db.gymExercises.where('gymId').equals(gym.id).count()).toBe(1);
+  await vi.waitFor(() => expect(location.hash).toBe(`#/gym/${gym.id}`));
+});

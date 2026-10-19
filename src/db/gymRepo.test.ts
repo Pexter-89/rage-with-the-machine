@@ -2,9 +2,14 @@ import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { db, resetDb } from './db';
 import { parseMachineFile } from '../domain/importMachine';
 import { getCatalog } from './catalogRepo';
+import type { GymExercise } from '../domain/types';
 import {
   GymHasSessionsError,
   addGym,
+  addGymFromFile,
+  exportGymFile,
+  planReplace,
+  replaceGymEquipment,
   availableExercises,
   deleteGym,
   deleteGymExercise,
@@ -280,5 +285,76 @@ describe('importMachines', () => {
     spy.mockRestore();
     expect(await db.customCatalog.count()).toBe(0);
     expect(await db.gymExercises.count()).toBe(0);
+  });
+});
+
+describe('gym files', () => {
+  const parse = async (obj: object) => {
+    const r = parseMachineFile(JSON.stringify({ format: 'rwtm-machine', version: 1, ...obj }), await getCatalog());
+    if (!r.ok) throw new Error(r.error);
+    return r;
+  };
+  const stack = (weights: number[]) => ({ type: 'stack', weights });
+
+  test('export, then import as a new gym, gives the same equipment', async () => {
+    const g = await addGym('Kamppi');
+    await importMachines(
+      g.id,
+      await parse({
+        machines: [
+          { exercise: 'lat-pulldown', label: 'A', loading: { ...stack([5, 10]), addOns: [2.5] }, notes: 'pin 3' },
+          {
+            exercise: 'sled-pull',
+            newExercise: { id: 'sled-pull', name: 'Sled Pull', category: 'legs', kind: 'machine' },
+            loading: stack([10, 20]),
+          },
+          { exercise: 'deadlift', loading: { type: 'plates', base: 15, plates: [5, 10], sides: 2 }, hidden: true },
+        ],
+      }),
+    );
+    const file = await exportGymFile(g.id);
+    expect(file).toMatchObject({ format: 'rwtm-machine', version: 1, gym: { name: 'Kamppi' } });
+    const copy = await addGymFromFile('Copy', await parse(JSON.parse(JSON.stringify(file))));
+    const strip = (ges: GymExercise[]) =>
+      ges.map(({ catalogId, label, notes, loading, hidden }) => ({ catalogId, label, notes, loading, hidden }))
+        .sort((a, b) => a.catalogId.localeCompare(b.catalogId));
+    expect(strip(await db.gymExercises.where('gymId').equals(copy.id).toArray())).toEqual(
+      strip(await db.gymExercises.where('gymId').equals(g.id).toArray()),
+    );
+    expect((await db.gyms.get(copy.id))?.name).toBe('Copy');
+  });
+
+  test('replace updates matches in place, hides removed equipment with history and deletes the rest', async () => {
+    const g = await addGym('Kamppi');
+    const keep = await saveGymExercise({ gymId: g.id, catalogId: 'lat-pulldown', label: 'A', notes: '', loading: stack([5]) as never, hidden: false });
+    const logged = await saveGymExercise({ gymId: g.id, catalogId: 'seated-row', label: '', notes: '', loading: stack([5]) as never, hidden: false });
+    const unused = await saveGymExercise({ gymId: g.id, catalogId: 'leg-extension', label: '', notes: '', loading: stack([5]) as never, hidden: false });
+    await db.sets.add({
+      id: 'x', sessionId: 's', gymId: g.id, catalogId: 'seated-row', gymExerciseId: logged.id, order: 1,
+      weight: 5, reps: 5, baseWeight: null, unit: 'kg', completedAt: 1,
+    });
+    const file = await parse({
+      gym: { name: 'Kamppi' },
+      machines: [
+        { exercise: 'lat-pulldown', label: 'A', loading: stack([5, 10, 15]), notes: 'fixed' },
+        { exercise: 'chest-press', loading: stack([10]) },
+      ],
+    });
+    expect(await planReplace(g.id, file.machines)).toEqual({ updated: 1, added: 1, removed: 1, hidden: 1 });
+    await replaceGymEquipment(g.id, file);
+    const after = await db.gymExercises.where('gymId').equals(g.id).toArray();
+    expect(after.find((x) => x.id === keep.id)).toMatchObject({ notes: 'fixed', loading: stack([5, 10, 15]) });
+    expect(after.find((x) => x.id === logged.id)?.hidden).toBe(true);
+    expect(after.find((x) => x.id === unused.id)).toBeUndefined();
+    expect(after.filter((x) => !x.hidden).map((x) => x.catalogId).sort()).toEqual(['chest-press', 'lat-pulldown']);
+  });
+
+  test('importing a free-weight setting updates the gym one instead of adding a second', async () => {
+    const g = await addGym('K');
+    await importMachines(g.id, await parse({ machines: [{ exercise: 'deadlift', loading: { type: 'free', start: 20, step: 5, max: 200 } }] }));
+    await importMachines(g.id, await parse({ machines: [{ exercise: 'deadlift', loading: { type: 'free', start: 20, step: 2.5, max: 200 } }] }));
+    const mine = await db.gymExercises.where('gymId').equals(g.id).toArray();
+    expect(mine).toHaveLength(1);
+    expect(mine[0].loading).toEqual({ type: 'free', start: 20, step: 2.5, max: 200 });
   });
 });
