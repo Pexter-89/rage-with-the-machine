@@ -11,6 +11,7 @@ import { formatSummary, formatWeight, summarizeSets } from '../../domain/metrics
 import type { PickerItem, SetEntry } from '../../domain/types';
 import ConfirmSheet from '../components/ConfirmSheet';
 import PlatePicker from '../components/PlatePicker';
+import RestTimer from '../components/RestTimer';
 import Sheet from '../components/Sheet';
 import TopBar from '../components/TopBar';
 import Wheel from '../components/Wheel';
@@ -147,6 +148,8 @@ export default function Logging({ sessionId, itemKey }: { sessionId: string; ite
   const pair = useRef<PairHandle>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  /** When the last set was completed on this screen; leaving the screen drops the timer. */
+  const [restSince, setRestSince] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -189,6 +192,7 @@ export default function Logging({ sessionId, itemKey }: { sessionId: string; ite
     try {
       const v = pair.current?.flush() ?? row;
       await addSet(sessionId, item, v.weight, v.reps, Date.now());
+      setRestSince(Date.now());
       setError(null);
     } catch (e) {
       writeFailed(e, setError);
@@ -229,6 +233,8 @@ export default function Logging({ sessionId, itemKey }: { sessionId: string; ite
           </li>
         ))}
       </ol>
+
+      <RestTimer since={restSince} />
 
       <div className="input-row">
         <WheelPair ref={pair} item={item} row={row} onChange={(u) => setRow((r) => (r ? u(r) : r))} />

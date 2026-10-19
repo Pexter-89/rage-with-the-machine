@@ -352,3 +352,16 @@ test('plate loading: a typed total is shown as plates, with what the plates cann
   expect(screen.getByRole('button', { name: 'Remove 10 kg pair' })).toBeInTheDocument();
   expect(screen.getByText('+0.5')).toBeInTheDocument();
 });
+
+test('a rest timer appears once a set is completed and is gone when the screen is left', async () => {
+  const { s, ge } = await seed();
+  const view = render(<Logging sessionId={s.id} itemKey={ge.id} />);
+  await screen.findByRole('button', { name: 'Complete set' });
+  expect(screen.queryByRole('timer')).toBeNull();
+  await userEvent.click(screen.getByRole('button', { name: 'Complete set' }));
+  expect(await screen.findByRole('timer', { name: 'Rest timer' })).toHaveTextContent('0:00');
+  view.unmount();
+  render(<Logging sessionId={s.id} itemKey={ge.id} />);
+  await screen.findByRole('button', { name: 'Complete set' });
+  expect(screen.queryByRole('timer')).toBeNull();
+});
