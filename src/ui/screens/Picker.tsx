@@ -4,8 +4,10 @@ import { db } from '../../db/db';
 import { getCatalog } from '../../db/catalogRepo';
 import { availableExercises } from '../../db/gymRepo';
 import { CATEGORIES } from '../../domain/catalog';
+import { BodyIcon, EquipmentIcon } from '../components/Icons';
 import ImportMachineSheet from '../components/ImportMachineSheet';
-import { navigate } from '../router';
+import TopBar from '../components/TopBar';
+import { navigate, type Route } from '../router';
 
 export default function Picker({ sessionId }: { sessionId: string }) {
   const [importing, setImporting] = useState(false);
@@ -21,7 +23,13 @@ export default function Picker({ sessionId }: { sessionId: string }) {
     if (data === null) navigate({ name: 'home' });
   }, [data]);
 
-  if (!data) return <main className="screen picker" />;
+  const route: Route = { name: 'pick', sessionId };
+  if (!data)
+    return (
+      <main className="screen picker">
+        <TopBar route={route} />
+      </main>
+    );
 
   const columns = CATEGORIES.map((c) => ({ ...c, items: data.items.filter((i) => i.category === c.id) })).filter(
     (c) => c.items.length > 0,
@@ -29,16 +37,18 @@ export default function Picker({ sessionId }: { sessionId: string }) {
 
   return (
     <main className="screen picker">
-      <header className="bar">
-        <h1 className="title">{data.gymName}</h1>
-        <button className="btn btn-ghost btn-small" onClick={() => setImporting(true)}>
-          Import machine
+      <TopBar route={route} title={data.gymName}>
+        <button className="btn btn-ghost btn-small" aria-label="Import machine" onClick={() => setImporting(true)}>
+          Import
         </button>
-      </header>
+      </TopBar>
       <div className="columns">
         {columns.map((c) => (
           <section key={c.id} className="column">
-            <h2 className="column-title">{c.name}</h2>
+            <h2 className="column-title">
+              <BodyIcon category={c.id} className="column-icon" />
+              {c.name}
+            </h2>
             <div className="column-items">
               {c.items.map((i) => (
                 <button
@@ -46,7 +56,10 @@ export default function Picker({ sessionId }: { sessionId: string }) {
                   className="btn pick-item"
                   onClick={() => navigate({ name: 'log', sessionId, key: i.key })}
                 >
-                  <span className="card-name">{i.name}</span>
+                  <span className="pick-head">
+                    <EquipmentIcon equipment={i.equipment} className="pick-icon" />
+                    <span className="card-name">{i.name}</span>
+                  </span>
                   {i.label && <span className="card-label">{i.label}</span>}
                 </button>
               ))}

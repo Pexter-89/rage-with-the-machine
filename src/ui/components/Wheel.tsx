@@ -1,7 +1,9 @@
-import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { formatWeight } from '../../domain/metrics';
 
-export const ITEM_HEIGHT = 44;
+export const ITEM_HEIGHT = 40;
+/** Rows visible at once; odd, so one sits in the middle under the selection band. */
+export const VISIBLE_ROWS = 5;
 const SETTLE_MS = 120;
 
 /** Index of the row centred after scrolling: rounded and clamped to 0..count-1. */
@@ -24,6 +26,11 @@ export interface WheelHandle {
   flush(): number;
 }
 
+/**
+ * A native-scrolling picker wheel. The rows are styled every animation frame by their distance from the
+ * centre (no React render while scrolling), and the value is committed once the scroll settles.
+ * Tap the centre row to type a value; tap a row above or below to step to it.
+ */
 export default forwardRef<WheelHandle, Props>(function Wheel({ label, values, value, onChange, parse, suffix }, ref) {
   const display = useMemo(
     () => (values.includes(value) ? values : [...values, value].sort((a, b) => a - b)),
@@ -33,6 +40,7 @@ export default forwardRef<WheelHandle, Props>(function Wheel({ label, values, va
 
   const scroller = useRef<HTMLDivElement>(null);
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const frame = useRef(0);
   const live = useRef({ display, value, onChange, editing: false });
   live.current = { display, value, onChange, editing: false };
 
@@ -44,13 +52,34 @@ export default forwardRef<WheelHandle, Props>(function Wheel({ label, values, va
   const typed = useRef({ text: '', parse });
   typed.current = { text, parse };
 
-  const scrollToValue = () => {
+  /** Fades and shrinks rows by their distance from the centre. */
+  const paint = useCallback(() => {
+    frame.current = 0;
     const el = scroller.current;
-    if (el) el.scrollTop = index * ITEM_HEIGHT;
-  };
+    if (!el) return;
+    const centre = el.scrollTop / ITEM_HEIGHT;
+    const rows = el.children;
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i] as HTMLElement;
+      const d = Math.min(Math.abs(i - centre), 3);
+      row.style.opacity = String(Math.max(0.25, 1 - d * 0.3));
+      row.style.transform = `scale(${1 - Math.min(d, 2) * 0.1})`;
+    }
+  }, []);
 
-  // Keep the wheel on `value` (mount, value change, and after leaving edit mode).
-  useLayoutEffect(scrollToValue, [index, display.length, editing]);
+  const repaint = useCallback(() => {
+    if (!frame.current) frame.current = requestAnimationFrame(paint);
+  }, [paint]);
+
+  // Keep the wheel on `value` (mount, value change, and after leaving edit mode). Skip when already there,
+  // so committing the value a scroll landed on never nudges the list.
+  useLayoutEffect(() => {
+    const el = scroller.current;
+    if (!el) return;
+    const top = index * ITEM_HEIGHT;
+    if (Math.abs(el.scrollTop - top) >= 1) el.scrollTop = top;
+    paint();
+  }, [index, display.length, editing, paint]);
 
   const settle = () => {
     const el = scroller.current;
@@ -72,7 +101,10 @@ export default forwardRef<WheelHandle, Props>(function Wheel({ label, values, va
     return () => {
       el.removeEventListener('scrollend', onEnd);
       clearTimeout(timer.current);
+      cancelAnimationFrame(frame.current);
+      frame.current = 0;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useImperativeHandle(
@@ -105,6 +137,7 @@ export default forwardRef<WheelHandle, Props>(function Wheel({ label, values, va
 
   // Browsers with `scrollend` settle there; others fall back to a debounce.
   const onScroll = () => {
+    repaint();
     clearTimeout(timer.current);
     if (!hasScrollEnd()) timer.current = setTimeout(settle, SETTLE_MS);
   };
@@ -120,6 +153,17 @@ export default forwardRef<WheelHandle, Props>(function Wheel({ label, values, va
     // One settle after release; a following scroll event cancels it and scrollend/debounce takes over.
     clearTimeout(timer.current);
     timer.current = setTimeout(settle, hasScrollEnd() ? 300 : SETTLE_MS);
+  };
+
+  /** Tapping a neighbouring row glides to it; the scroll then settles on it like a swipe would. */
+  const stepTo = (i: number) => {
+    const el = scroller.current;
+    if (!el || editing) return;
+    const top = i * ITEM_HEIGHT;
+    if (typeof el.scrollTo === 'function') el.scrollTo({ top, behavior: 'smooth' });
+    else el.scrollTop = top;
+    clearTimeout(timer.current);
+    timer.current = setTimeout(settle, hasScrollEnd() ? 600 : SETTLE_MS * 3);
   };
 
   const startEdit = () => {
@@ -138,56 +182,63 @@ export default forwardRef<WheelHandle, Props>(function Wheel({ label, values, va
     setEditing(false);
   };
 
+  const pad = ((VISIBLE_ROWS - 1) / 2) * ITEM_HEIGHT;
+
   return (
     <div className="wheel">
       <span className="wheel-label">{label}</span>
-      <div className="wheel-scroll" 
-        ref={scroller}
-        onScroll={onScroll}
-        onTouchStart={() => press('touch')}
-        onTouchEnd={() => release('touch')}
-        onTouchCancel={() => release('touch')}
-        // Touch pointers are cancelled when scrolling starts; touch events track those instead.
-        onPointerDown={(e) => e.pointerType !== 'touch' && press('pointer')}
-        onPointerUp={(e) => e.pointerType !== 'touch' && release('pointer')}
-        onPointerCancel={(e) => e.pointerType !== 'touch' && release('pointer')}
-      >
-        {display.map((v, i) =>
-          i !== index ? (
-            <div key={v} className="wheel-item" aria-hidden="true">
-              {formatWeight(v)}
-            </div>
-          ) : editing ? (
-            <div key={v} className="wheel-item selected">
-              <input
-                className="wheel-input"
-                type="text"
-                inputMode="decimal"
-                aria-label={label}
-                value={text}
-                autoFocus
-                onFocus={(e) => e.currentTarget.select()}
-                onChange={(e) => setText(e.target.value)}
-                onBlur={() => finish(true)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') finish(true);
-                  else if (e.key === 'Escape') finish(false);
-                }}
-              />
-            </div>
-          ) : (
-            <button
-              key={v}
-              type="button"
-              className="wheel-item selected"
-              aria-label={`${label} ${formatWeight(v)}`}
-              onClick={startEdit}
-            >
-              {formatWeight(v)}
-              {suffix}
-            </button>
-          ),
-        )}
+      <div className="wheel-window" style={{ height: VISIBLE_ROWS * ITEM_HEIGHT }}>
+        <div className="wheel-band" style={{ top: pad, height: ITEM_HEIGHT }} aria-hidden="true" />
+        <div
+          className="wheel-scroll"
+          ref={scroller}
+          style={{ paddingTop: pad, paddingBottom: pad }}
+          onScroll={onScroll}
+          onTouchStart={() => press('touch')}
+          onTouchEnd={() => release('touch')}
+          onTouchCancel={() => release('touch')}
+          // Touch pointers are cancelled when scrolling starts; touch events track those instead.
+          onPointerDown={(e) => e.pointerType !== 'touch' && press('pointer')}
+          onPointerUp={(e) => e.pointerType !== 'touch' && release('pointer')}
+          onPointerCancel={(e) => e.pointerType !== 'touch' && release('pointer')}
+        >
+          {display.map((v, i) =>
+            i !== index ? (
+              <div key={v} className="wheel-item" aria-hidden="true" onClick={() => stepTo(i)}>
+                {formatWeight(v)}
+              </div>
+            ) : editing ? (
+              <div key={v} className="wheel-item selected">
+                <input
+                  className="wheel-input"
+                  type="text"
+                  inputMode="decimal"
+                  aria-label={label}
+                  value={text}
+                  autoFocus
+                  onFocus={(e) => e.currentTarget.select()}
+                  onChange={(e) => setText(e.target.value)}
+                  onBlur={() => finish(true)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') finish(true);
+                    else if (e.key === 'Escape') finish(false);
+                  }}
+                />
+              </div>
+            ) : (
+              <button
+                key={v}
+                type="button"
+                className="wheel-item selected"
+                aria-label={`${label} ${formatWeight(v)}`}
+                onClick={startEdit}
+              >
+                {formatWeight(v)}
+                {suffix}
+              </button>
+            ),
+          )}
+        </div>
       </div>
     </div>
   );

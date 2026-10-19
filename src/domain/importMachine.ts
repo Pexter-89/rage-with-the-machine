@@ -13,6 +13,7 @@ export type ParseResult =
   | { ok: false; error: string };
 
 const MAX_STACK_WEIGHTS = 200;
+const MAX_PLATE_SIZES = 20;
 const MIN_PLATE_STEP = 0.25;
 const KEBAB = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
@@ -32,28 +33,38 @@ function matchingBrace(text: string, start: number): number {
   return -1;
 }
 
-function scan(src: string): unknown | null {
+/** Every top-level JSON object with `format === 'rwtm-machine'` in the text, in order. */
+function scan(src: string): unknown[] {
+  const found: unknown[] = [];
   for (let i = src.indexOf('{'); i !== -1; i = src.indexOf('{', i + 1)) {
     const end = matchingBrace(src, i);
     if (end === -1) continue;
     try {
       const value: unknown = JSON.parse(src.slice(i, end + 1));
-      if (isRecord(value) && value.format === 'rwtm-machine') return value;
+      if (isRecord(value) && value.format === 'rwtm-machine') {
+        found.push(value);
+        i = end; // continue after this object, so its inner braces are not scanned again
+      }
     } catch {
       // not JSON; try the next brace
     }
   }
-  return null;
+  return found;
 }
 
 /**
- * First JSON object with `format === 'rwtm-machine'` found anywhere in the text, or null.
- * The raw text is scanned first; curly quotes are normalised only as a fallback, so valid files keep them verbatim.
+ * Every machine file (JSON object with `format === 'rwtm-machine'`) found anywhere in the text: several
+ * Claude replies pasted together give several. The raw text is scanned first; curly quotes are normalised
+ * only as a fallback, so valid files keep them verbatim.
  */
+export function extractAllMachineJson(text: string): unknown[] {
+  const raw = scan(text);
+  return raw.length > 0 ? raw : scan(text.replace(/[“”]/g, '"').replace(/[‘’]/g, "'"));
+}
+
+/** First machine file found anywhere in the text, or null. */
 export function extractMachineJson(text: string): unknown | null {
-  return (
-    scan(text) ?? scan(text.replace(/[“”]/g, '"').replace(/[‘’]/g, "'"))
-  );
+  return extractAllMachineJson(text)[0] ?? null;
 }
 
 type Rec = Record<string, unknown>;
@@ -106,7 +117,20 @@ function parseLoading(v: unknown): Loading {
     if (!isNum(v.step) || v.step < MIN_PLATE_STEP) return fail(`plate step must be at least ${MIN_PLATE_STEP}`);
     return { type: 'plate', base: v.base, step: v.step };
   }
-  return fail('loading type must be "stack" or "plate"');
+  if (v.type === 'plates') {
+    unknownField(v, ['type', 'base', 'plates', 'sides'], 'loading ');
+    if (!isNum(v.base) || v.base < 0) return fail('plates base must be a number of 0 or more');
+    const p = v.plates;
+    if (!Array.isArray(p) || p.length === 0) return fail('plates must be a non-empty array of plate weights');
+    if (p.length > MAX_PLATE_SIZES) return fail(`plates may have at most ${MAX_PLATE_SIZES} sizes`);
+    if (!p.every((x) => isNum(x) && x >= MIN_PLATE_STEP)) return fail(`plate weights must be at least ${MIN_PLATE_STEP}`);
+    const plates = [...(p as number[])].sort((a, b) => a - b);
+    if (plates.some((x, i) => i > 0 && x === plates[i - 1])) return fail('plates must not contain duplicates');
+    const sides = v.sides ?? 2;
+    if (sides !== 1 && sides !== 2) return fail('plates sides must be 1 or 2');
+    return { type: 'plates', base: v.base, plates, sides };
+  }
+  return fail('loading type must be "stack", "plate" or "plates"');
 }
 
 function parseMachine(
@@ -147,29 +171,90 @@ function parseMachine(
   };
 }
 
-export function parseMachineFile(text: string, catalog: CatalogExercise[]): ParseResult {
-  const root = extractMachineJson(text);
-  if (!isRecord(root)) return { ok: false, error: 'No machine file found: expected JSON with "format": "rwtm-machine"' };
-  for (const k of Object.keys(root)) {
-    if (!['format', 'version', 'machines'].includes(k)) return { ok: false, error: `unknown field "${k}"` };
-  }
-  if (root.version !== 1) return { ok: false, error: 'Unsupported file version (expected "version": 1)' };
-  if (!Array.isArray(root.machines) || root.machines.length === 0) {
-    return { ok: false, error: '"machines" must be a non-empty array' };
-  }
+const NOT_FOUND = 'No machine file found: expected JSON with "format": "rwtm-machine"';
 
-  const known = new Set(catalog.map((e) => e.id));
-  const declared = new Map<string, CatalogExercise>();
+/** Parses one machine file object. `declared` holds new exercises from earlier files of the same batch. */
+function parseRoot(
+  root: unknown,
+  known: Set<string>,
+  declared: Map<string, CatalogExercise>,
+): { machines: ParsedMachine[]; declared: Map<string, CatalogExercise> } {
+  if (!isRecord(root)) return fail(NOT_FOUND);
+  for (const k of Object.keys(root)) {
+    if (!['format', 'version', 'machines'].includes(k)) fail(`unknown field "${k}"`);
+  }
+  if (root.version !== 1) fail('Unsupported file version (expected "version": 1)');
+  if (!Array.isArray(root.machines) || root.machines.length === 0) fail('"machines" must be a non-empty array');
+
+  const mine = new Map(declared);
   const machines: ParsedMachine[] = [];
-  for (let i = 0; i < root.machines.length; i++) {
+  const list = root.machines as unknown[];
+  for (let i = 0; i < list.length; i++) {
     try {
-      const { machine, newExercise } = parseMachine(root.machines[i], known, declared);
+      const { machine, newExercise } = parseMachine(list[i], known, mine);
       machines.push(machine);
-      if (newExercise && !declared.has(newExercise.id)) declared.set(newExercise.id, newExercise);
+      if (newExercise && !mine.has(newExercise.id)) mine.set(newExercise.id, newExercise);
     } catch (e) {
-      if (e instanceof Invalid) return { ok: false, error: `Machine ${i + 1}: ${e.message}` };
+      if (e instanceof Invalid) fail(`Machine ${i + 1}: ${e.message}`);
       throw e;
     }
   }
-  return { ok: true, machines, newExercises: [...declared.values()] };
+  return { machines, declared: mine };
+}
+
+export function parseMachineFile(text: string, catalog: CatalogExercise[]): ParseResult {
+  try {
+    const { machines, declared } = parseRoot(extractMachineJson(text), new Set(catalog.map((e) => e.id)), new Map());
+    return { ok: true, machines, newExercises: [...declared.values()] };
+  } catch (e) {
+    if (e instanceof Invalid) return { ok: false, error: e.message };
+    throw e;
+  }
+}
+
+export interface BatchSource {
+  /** Shown in error messages, e.g. the file name. */
+  name: string;
+  text: string;
+}
+
+export interface BatchResult {
+  machines: ParsedMachine[];
+  newExercises: CatalogExercise[];
+  /** One line per file (or machine file within a text) that could not be read; the others still import. */
+  errors: string[];
+}
+
+const sameParsed = (a: ParsedMachine, b: ParsedMachine) =>
+  a.catalogId === b.catalogId && a.label === b.label && JSON.stringify(a.loading) === JSON.stringify(b.loading);
+
+/**
+ * Parses several files or pasted replies at once. Each source may hold several machine files; each machine file
+ * is all-or-nothing, and a bad one is reported in `errors` without blocking the rest. Machines listed twice
+ * (the same photo sent twice) are kept once.
+ */
+export function parseMachineBatch(sources: BatchSource[], catalog: CatalogExercise[]): BatchResult {
+  const known = new Set(catalog.map((e) => e.id));
+  let declared = new Map<string, CatalogExercise>();
+  const machines: ParsedMachine[] = [];
+  const errors: string[] = [];
+  for (const src of sources) {
+    const roots = extractAllMachineJson(src.text);
+    if (roots.length === 0) {
+      errors.push(sources.length > 1 ? `${src.name}: ${NOT_FOUND}` : NOT_FOUND);
+      continue;
+    }
+    roots.forEach((root, j) => {
+      try {
+        const parsed = parseRoot(root, known, declared);
+        declared = parsed.declared;
+        for (const m of parsed.machines) if (!machines.some((x) => sameParsed(x, m))) machines.push(m);
+      } catch (e) {
+        if (!(e instanceof Invalid)) throw e;
+        const where = [sources.length > 1 ? src.name : '', roots.length > 1 ? `file ${j + 1}` : ''].filter(Boolean);
+        errors.push(where.length ? `${where.join(', ')}: ${e.message}` : e.message);
+      }
+    });
+  }
+  return { machines, newExercises: [...declared.values()], errors };
 }

@@ -1,4 +1,4 @@
-import { CATEGORIES } from '../domain/catalog';
+import { CATEGORIES, equipmentOf } from '../domain/catalog';
 import type { ParsedMachine, ParseResult } from '../domain/importMachine';
 import { sameLoading } from '../domain/loading';
 import type { CatalogExercise, Gym, GymExercise, PickerItem } from '../domain/types';
@@ -125,6 +125,7 @@ function itemFor(entry: CatalogExercise, ge: GymExercise | null): PickerItem {
     name: entry.name,
     label: ge ? ge.label : '',
     category: entry.category,
+    equipment: equipmentOf(entry),
     loading: structuredClone(loading),
     unilateral: !!entry.unilateral,
     assisted: !!entry.assisted,

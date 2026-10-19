@@ -1,4 +1,4 @@
-import type { Category, CatalogExercise, Kind, Loading } from './types';
+import type { Category, CatalogExercise, Equipment, Kind, Loading } from './types';
 
 export const CATEGORIES: { id: Category; name: string }[] = [
   { id: 'legs', name: 'Legs' },
@@ -11,7 +11,12 @@ export const CATEGORIES: { id: Category; name: string }[] = [
 ];
 
 export const DUMBBELL_LOADING: Loading = { type: 'free', start: 1, step: 1, max: 60, bigStepFrom: 10, bigStep: 2 };
-export const BARBELL_LOADING: Loading = { type: 'free', start: 20, step: 2.5, max: 300 };
+/** Standard plates, loaded in pairs. */
+export const DEFAULT_PLATES = [2.5, 5, 10, 15, 20, 25];
+export const BARBELL_LOADING: Loading = { type: 'plates', base: 20, plates: DEFAULT_PLATES, sides: 2 };
+const EZ_BAR_LOADING: Loading = { type: 'plates', base: 10, plates: DEFAULT_PLATES, sides: 2 };
+/** Band resistance, by the gym's colour or level numbering. */
+export const BAND_LOADING: Loading = { type: 'stack', unit: 'level', weights: [1, 2, 3, 4, 5] };
 export const BODYWEIGHT_LOADING: Loading = { type: 'bodyweight', step: 2.5, max: 100 };
 const KETTLEBELL_LOADING: Loading = { type: 'free', start: 4, step: 4, max: 48 };
 
@@ -22,6 +27,7 @@ const make = (
   name: string,
   category: Category,
   kind: Kind,
+  equipment: Equipment,
   defaultLoading?: Loading,
   flags: Flags = {},
 ): CatalogExercise => ({
@@ -29,6 +35,7 @@ const make = (
   name,
   category,
   kind,
+  equipment,
   ...flags,
   ...(defaultLoading ? { defaultLoading } : {}),
   builtIn: true,
@@ -36,15 +43,23 @@ const make = (
 
 // Machines and cable stations: loading is per gym, so no default.
 const machine = (id: string, name: string, category: Category, flags?: Flags) =>
-  make(id, name, category, 'machine', undefined, flags);
+  make(id, name, category, 'machine', 'machine', undefined, flags);
 const dumbbell = (id: string, name: string, category: Category, flags?: Flags) =>
-  make(id, name, category, 'free', DUMBBELL_LOADING, flags);
-const barbell = (id: string, name: string, category: Category, flags?: Flags) =>
-  make(id, name, category, 'free', BARBELL_LOADING, flags);
+  make(id, name, category, 'free', 'dumbbell', DUMBBELL_LOADING, flags);
+const barbell = (id: string, name: string, category: Category, flags?: Flags, loading: Loading = BARBELL_LOADING) =>
+  make(id, name, category, 'free', 'barbell', loading, flags);
 const kettlebell = (id: string, name: string, category: Category, flags?: Flags) =>
-  make(id, name, category, 'free', KETTLEBELL_LOADING, flags);
+  make(id, name, category, 'free', 'kettlebell', KETTLEBELL_LOADING, flags);
+const band = (id: string, name: string, category: Category, flags?: Flags) =>
+  make(id, name, category, 'free', 'band', BAND_LOADING, flags);
 const bodyweight = (id: string, name: string, category: Category, flags?: Flags) =>
-  make(id, name, category, 'bodyweight', BODYWEIGHT_LOADING, flags);
+  make(id, name, category, 'bodyweight', 'bodyweight', BODYWEIGHT_LOADING, flags);
+
+/** Equipment of a catalogue entry; custom (imported) entries are machines. */
+export function equipmentOf(e: Pick<CatalogExercise, 'kind' | 'equipment'>): Equipment {
+  if (e.equipment) return e.equipment;
+  return e.kind === 'bodyweight' ? 'bodyweight' : e.kind === 'free' ? 'dumbbell' : 'machine';
+}
 
 export const BUILT_IN_CATALOG: CatalogExercise[] = [
   // Legs
@@ -107,8 +122,8 @@ export const BUILT_IN_CATALOG: CatalogExercise[] = [
   machine('preacher-curl-machine', 'Preacher Curl Machine', 'arms'),
   machine('assisted-dip', 'Assisted Dip', 'arms', { assisted: true }),
   barbell('barbell-curl', 'Barbell Curl', 'arms'),
-  barbell('ez-bar-curl', 'EZ-Bar Curl', 'arms'),
-  barbell('skull-crusher', 'Skull Crusher', 'arms'),
+  barbell('ez-bar-curl', 'EZ-Bar Curl', 'arms', {}, EZ_BAR_LOADING),
+  barbell('skull-crusher', 'Skull Crusher', 'arms', {}, EZ_BAR_LOADING),
   dumbbell('dumbbell-curl', 'Dumbbell Curl', 'arms'),
   dumbbell('hammer-curl', 'Hammer Curl', 'arms'),
   dumbbell('dumbbell-triceps-extension', 'Dumbbell Triceps Extension', 'arms'),
@@ -133,4 +148,11 @@ export const BUILT_IN_CATALOG: CatalogExercise[] = [
   kettlebell('turkish-get-up', 'Turkish Get-Up', 'fullbody', { unilateral: true }),
   kettlebell('farmers-carry', "Farmer's Carry", 'fullbody'),
   bodyweight('burpee', 'Burpee', 'fullbody'),
+  // Resistance bands
+  band('band-lateral-walk', 'Band Lateral Walk', 'legs'),
+  band('band-chest-press', 'Band Chest Press', 'chest'),
+  band('band-row', 'Band Row', 'back'),
+  band('band-pull-apart', 'Band Pull-Apart', 'shoulders'),
+  band('band-biceps-curl', 'Band Biceps Curl', 'arms'),
+  band('pallof-press', 'Pallof Press', 'core'),
 ];

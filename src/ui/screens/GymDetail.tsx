@@ -6,10 +6,11 @@ import { listGymMachines, saveGymExercise } from '../../db/gymRepo';
 import { CATEGORIES } from '../../domain/catalog';
 import type { CatalogExercise } from '../../domain/types';
 import ImportMachineSheet from '../components/ImportMachineSheet';
+import TopBar from '../components/TopBar';
 import { navigate } from '../router';
 
 export default function GymDetail({ gymId }: { gymId: string }) {
-  const [importing, setImporting] = useState<null | { file?: File }>(null);
+  const [importing, setImporting] = useState<null | { files?: File[] }>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const data = useLiveQuery(async () => {
     const gym = await db.gyms.get(gymId);
@@ -21,7 +22,12 @@ export default function GymDetail({ gymId }: { gymId: string }) {
     return { gym, catalog, machines, mine };
   }, [gymId]);
 
-  if (!data) return <main className="screen" />;
+  if (!data)
+    return (
+      <main className="screen">
+        <TopBar route={{ name: 'gym', gymId }} />
+      </main>
+    );
   const { gym, catalog, machines, mine } = data;
   const byId = new Map(catalog.map((e) => [e.id, e]));
   const freeLike = catalog.filter((e) => (e.kind === 'free' || e.kind === 'bodyweight') && e.defaultLoading);
@@ -40,12 +46,7 @@ export default function GymDetail({ gymId }: { gymId: string }) {
 
   return (
     <main className="screen">
-      <header className="bar">
-        <button className="btn btn-ghost btn-small" onClick={() => navigate({ name: 'gyms' })}>
-          ‹ Gyms
-        </button>
-        <h1 className="title">{gym?.name ?? ''}</h1>
-      </header>
+      <TopBar route={{ name: 'gym', gymId }} title={gym?.name ?? ''} />
 
       <h2 className="section-title">Machines</h2>
       {machines.length === 0 && <p className="hint">No machines yet. Import a file from Claude or add one manually.</p>}
@@ -102,16 +103,17 @@ export default function GymDetail({ gymId }: { gymId: string }) {
           ref={fileRef}
           type="file"
           hidden
+          multiple
           aria-label="Machine file"
           accept=".json,.md,.txt,application/json,text/plain,text/markdown"
           onChange={(e) => {
-            const file = e.target.files?.[0];
+            const files = [...(e.target.files ?? [])];
             e.target.value = '';
-            if (file) setImporting({ file });
+            if (files.length > 0) setImporting({ files });
           }}
         />
         <button className="btn btn-primary" onClick={() => fileRef.current?.click()}>
-          Import machine file
+          Import machine files
         </button>
         <button className="btn btn-ghost" onClick={() => setImporting({})}>
           Paste from Claude
@@ -124,7 +126,7 @@ export default function GymDetail({ gymId }: { gymId: string }) {
       {importing && (
         <ImportMachineSheet
           gymId={gymId}
-          initialFile={importing.file}
+          initialFiles={importing.files}
           onClose={() => setImporting(null)}
           onImported={() => {}}
         />

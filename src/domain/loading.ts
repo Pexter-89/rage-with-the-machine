@@ -36,6 +36,10 @@ export function wheelValues(l: Loading): number[] {
       return [...l.weights].sort((a, b) => a - b);
     case 'plate':
       return range(l.base, l.base + 400, () => l.step);
+    case 'plates': {
+      const smallest = Math.min(...l.plates);
+      return range(l.base, l.base + 400, () => (Number.isFinite(smallest) ? smallest * l.sides : 0));
+    }
     case 'free':
       return range(l.start, l.max, (v) =>
         l.bigStepFrom !== undefined && l.bigStep !== undefined && v >= l.bigStepFrom ? l.bigStep : l.step,
@@ -65,4 +69,34 @@ export function parseRepsInput(s: string): number | null {
   if (!/^\d+$/.test(t)) return null;
   const n = Number(t);
   return n >= 1 ? n : null;
+}
+
+type PlatesLoading = Extract<Loading, { type: 'plates' }>;
+
+/** Total weight of the bar or sled plus `plates` (one side's plates when loaded in pairs). */
+export function plateTotal(l: PlatesLoading, plates: number[]): number {
+  return round2(l.base + l.sides * plates.reduce((sum, p) => sum + p, 0));
+}
+
+/**
+ * The plates (per side, heaviest first) that make up `total`, picking the heaviest plates first.
+ * `rest` is what the available plates cannot make up (per side); 0 when the total is exact.
+ */
+export function platesFor(l: PlatesLoading, total: number): { plates: number[]; rest: number } {
+  let left = round2((total - l.base) / l.sides);
+  const plates: number[] = [];
+  if (!(left > 0)) return { plates, rest: 0 };
+  const sizes = [...l.plates].filter((p) => p > 0).sort((a, b) => b - a);
+  for (const p of sizes) {
+    while (left >= p - 1e-9) {
+      plates.push(p);
+      left = round2(left - p);
+    }
+  }
+  return { plates, rest: left };
+}
+
+/** Plates heaviest first, the way they go on the bar. */
+export function sortPlates(plates: number[]): number[] {
+  return [...plates].sort((a, b) => b - a);
 }

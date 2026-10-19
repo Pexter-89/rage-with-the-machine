@@ -20,7 +20,7 @@ test('flags', () => {
 });
 test('size and built-in flag', () => {
   expect(BUILT_IN_CATALOG.length).toBeGreaterThanOrEqual(60);
-  expect(BUILT_IN_CATALOG.length).toBeLessThanOrEqual(80);
+  expect(BUILT_IN_CATALOG.length).toBeLessThanOrEqual(90);
   BUILT_IN_CATALOG.forEach(e => expect(e.builtIn).toBe(true));
 });
 test('full body and core have real entries', () => {

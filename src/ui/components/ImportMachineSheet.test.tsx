@@ -56,7 +56,7 @@ test('ImportMachineSheet: pasted markdown → preview → Import creates gym exe
   expect(screen.getByText('Sled Pull — Legs · Stack 5–100 kg')).toBeInTheDocument();
   expect(screen.getByText('New: Sled Pull')).toBeInTheDocument();
 
-  await user.click(screen.getByRole('button', { name: 'Import' }));
+  await user.click(screen.getByRole('button', { name: 'Import 2 machines' }));
   await vi.waitFor(() => expect(onImported).toHaveBeenCalledTimes(1));
   expect(onImported.mock.calls[0][0]).toHaveLength(2);
   expect(await db.gymExercises.where('gymId').equals(g.id).count()).toBe(2);
@@ -100,7 +100,7 @@ test('when every machine is already at this gym: "Nothing new to import" and Imp
   const first = render(<ImportMachineSheet gymId={g.id} onClose={() => {}} onImported={onImported} />);
   await user.click(screen.getByLabelText('Pasted text'));
   await user.paste(md);
-  await user.click(await screen.findByRole('button', { name: 'Import' }));
+  await user.click(await screen.findByRole('button', { name: 'Import 2 machines' }));
   await vi.waitFor(() => expect(onImported).toHaveBeenCalledTimes(1));
   first.unmount();
 
@@ -154,7 +154,7 @@ test('an import failure is shown as one truncated line and nothing is reported i
   render(<ImportMachineSheet gymId={g.id} onClose={() => {}} onImported={onImported} />);
   await user.click(screen.getByLabelText('Pasted text'));
   await user.paste(md);
-  await user.click(await screen.findByRole('button', { name: 'Import' }));
+  await user.click(await screen.findByRole('button', { name: 'Import 2 machines' }));
   const alert = await screen.findByRole('alert');
   expect(alert.textContent).not.toContain('second line');
   expect(alert.textContent!.length).toBeLessThanOrEqual(121);
@@ -178,4 +178,50 @@ test('Paste button appears only with clipboard.readText and reads into the area'
   } finally {
     Object.defineProperty(navigator, 'clipboard', { value: undefined, configurable: true });
   }
+});
+
+const one = (exercise: string, label: string) =>
+  JSON.stringify({
+    format: 'rwtm-machine',
+    version: 1,
+    machines: [{ exercise, newExercise: null, label, loading: { type: 'stack', weights: [5, 10] }, notes: '' }],
+  });
+
+test('several files at once, and more added later, import as one batch; duplicates are listed once', async () => {
+  const user = userEvent.setup();
+  const g = await addGym('K');
+  const onImported = vi.fn();
+  render(<ImportMachineSheet gymId={g.id} onClose={() => {}} onImported={onImported} />);
+  const input = screen.getByLabelText('Machine file') as HTMLInputElement;
+  expect(input.multiple).toBe(true);
+  await user.upload(input, [
+    new File([one('lat-pulldown', 'A')], 'a.json', { type: 'application/json' }),
+    new File([one('seated-row', 'B')], 'b.json', { type: 'application/json' }),
+  ]);
+  expect(await screen.findByText(/^Lat Pulldown — Back/)).toBeInTheDocument();
+  expect(screen.getByText(/^Seated Row — Back/)).toBeInTheDocument();
+  await user.upload(input, [
+    new File([one('leg-extension', 'C')], 'c.json', { type: 'application/json' }),
+    new File([one('seated-row', 'B')], 'b-again.json', { type: 'application/json' }),
+  ]);
+  expect(await screen.findByText(/^Leg Extension — Legs/)).toBeInTheDocument();
+  expect(screen.getAllByText(/^Seated Row — Back/)).toHaveLength(1);
+  await user.click(screen.getByRole('button', { name: 'Import 3 machines' }));
+  await vi.waitFor(() => expect(onImported).toHaveBeenCalledTimes(1));
+  expect(await db.gymExercises.count()).toBe(3);
+});
+
+test('several replies pasted together are all read; a broken one is reported and the rest still import', async () => {
+  const user = userEvent.setup();
+  const g = await addGym('K');
+  const onImported = vi.fn();
+  render(<ImportMachineSheet gymId={g.id} onClose={() => {}} onImported={onImported} />);
+  await user.click(screen.getByLabelText('Pasted text'));
+  const broken = JSON.stringify({ format: 'rwtm-machine', version: 1, machines: [{ exercise: 'nope', loading: {} }] });
+  await user.paste(`First:\n${one('lat-pulldown', 'A')}\nSecond:\n${broken}\nThird:\n${one('seated-row', 'B')}`);
+  expect(await screen.findByText('file 2: Machine 1: unknown exercise "nope"')).toBeInTheDocument();
+  await user.click(screen.getByRole('checkbox', { name: 'Import Seated Row (B)' }));
+  await user.click(screen.getByRole('button', { name: 'Import' }));
+  await vi.waitFor(() => expect(onImported).toHaveBeenCalledTimes(1));
+  expect((await db.gymExercises.toArray()).map((m) => m.catalogId)).toEqual(['lat-pulldown']);
 });

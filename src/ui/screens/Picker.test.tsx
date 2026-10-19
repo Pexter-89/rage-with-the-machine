@@ -92,3 +92,15 @@ test('Import machine from the picker navigates to the single created machine', a
   const created = (await db.gymExercises.toArray()).find((e) => e.catalogId === 'hack-squat')!;
   expect(location.hash).toBe(`#/session/${s.id}/log/${created.id}`);
 });
+
+test('category headers carry a body figure and exercises an equipment icon', async () => {
+  const g = await addGym('K');
+  const s = await startSession(g.id, Date.now());
+  const { container } = render(<Picker sessionId={s.id} />);
+  const legs = await screen.findByRole('heading', { name: 'Legs' });
+  expect(legs.querySelector('svg')).not.toBeNull();
+  const squat = screen.getByRole('button', { name: /^Barbell Back Squat/ });
+  expect(squat.querySelector('svg title')?.textContent).toBe('Barbell');
+  expect(screen.getByRole('button', { name: /^Band Lateral Walk/ }).querySelector('svg title')?.textContent).toBe('Resistance band');
+  expect(container.querySelectorAll('.pick-icon').length).toBeGreaterThan(20);
+});

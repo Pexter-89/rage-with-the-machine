@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { db, resetDb } from '../../db/db';
 import { getSettings } from '../../db/settingsRepo';
@@ -204,3 +204,16 @@ test('Home button navigates home', async () => {
   await user.click(await screen.findByRole('button', { name: '‹ Home' }));
   expect(location.hash).toBe('#/');
 });
+
+test('Load demo data adds the demo gyms; Remove demo data asks first and takes them away', async () => {
+  const user = userEvent.setup();
+  render(<Settings />);
+  await user.click(await screen.findByRole('button', { name: 'Load demo data' }));
+  expect(await screen.findByText(/^Demo data loaded: 2 demo gyms, \d+ sessions$/)).toBeInTheDocument();
+  expect(await db.gyms.count()).toBe(2);
+  await user.click(await screen.findByRole('button', { name: 'Remove demo data' }));
+  await user.click(within(await screen.findByRole('dialog', { name: 'Remove demo data?' })).getByRole('button', { name: 'Remove' }));
+  await vi.waitFor(async () => expect(await db.gyms.count()).toBe(0), { timeout: 5000 });
+  expect(await db.sets.count()).toBe(0);
+  expect(await screen.findByRole('button', { name: 'Load demo data' })).toBeInTheDocument();
+}, 20_000);

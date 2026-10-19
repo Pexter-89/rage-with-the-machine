@@ -5,6 +5,7 @@ import { db, resetDb } from '../../db/db';
 import { SessionEndedError, startSession } from '../../db/sessionRepo';
 import { formatDate } from '../../domain/dates';
 import type { Loading } from '../../domain/types';
+import { ITEM_HEIGHT } from '../components/Wheel';
 import Logging from './Logging';
 
 // fail: the next repo write (addSet / updateSet / deleteSet) rejects with this error instead of running.
@@ -191,7 +192,7 @@ test('Back returns to the session', async () => {
 });
 
 function scrollTo(scroller: Element, row: number) {
-  Object.defineProperty(scroller, 'scrollTop', { get: () => row * 44, set: () => {}, configurable: true });
+  Object.defineProperty(scroller, 'scrollTop', { get: () => row * ITEM_HEIGHT, set: () => {}, configurable: true });
   fireEvent.scroll(scroller);
 }
 
@@ -306,4 +307,48 @@ test('Save in the edit sheet after the session ended navigates home', async () =
   mocks.fail = () => new SessionEndedError(s.id);
   await userEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Save' }));
   await vi.waitFor(() => expect(location.hash).toBe('#/'));
+});
+
+test('the ✕ on a done set deletes it after confirming', async () => {
+  const user = userEvent.setup();
+  const { s, ge } = await seed();
+  render(<Logging sessionId={s.id} itemKey={ge.id} />);
+  await user.click(await screen.findByRole('button', { name: 'Complete set' }));
+  await user.click(await screen.findByRole('button', { name: 'Delete set 1' }));
+  const dialog = await screen.findByRole('dialog', { name: 'Delete set?' });
+  expect(dialog).toHaveTextContent('Set 1: 60 kg × 10');
+  await user.click(within(dialog).getByRole('button', { name: 'Delete' }));
+  await vi.waitFor(async () => expect(await db.sets.count()).toBe(0));
+});
+
+test('plate loading: add pairs, take a plate off, and the total is what gets logged', async () => {
+  const user = userEvent.setup();
+  const { s, ge } = await seed({
+    catalogId: 'leg-press',
+    loading: { type: 'plates', base: 62, plates: [2.5, 5, 10, 20], sides: 2 },
+  });
+  render(<Logging sessionId={s.id} itemKey={ge.id} />);
+  expect(await screen.findByRole('button', { name: 'KG 62' })).toBeInTheDocument();
+  await user.click(screen.getByRole('button', { name: 'Add 20 kg pair' }));
+  await user.click(screen.getByRole('button', { name: 'Add 2.5 kg pair' }));
+  await user.click(screen.getByRole('button', { name: 'Add 2.5 kg pair' }));
+  expect(screen.getByRole('button', { name: 'KG 112' })).toBeInTheDocument();
+  // Two 2.5s stay two 2.5s rather than turning into a 5.
+  expect(screen.getAllByRole('button', { name: 'Remove 2.5 kg pair' })).toHaveLength(2);
+  await user.click(screen.getAllByRole('button', { name: 'Remove 2.5 kg pair' })[0]);
+  expect(screen.getByRole('button', { name: 'KG 107' })).toBeInTheDocument();
+  await user.click(screen.getByRole('button', { name: 'Complete set' }));
+  await vi.waitFor(async () => expect((await db.sets.toArray())[0]).toMatchObject({ weight: 107, baseWeight: 62 }));
+});
+
+test('plate loading: a typed total is shown as plates, with what the plates cannot make', async () => {
+  const user = userEvent.setup();
+  const { s, ge } = await seed({ loading: { type: 'plates', base: 20, plates: [2.5, 5, 10, 25], sides: 2 } });
+  render(<Logging sessionId={s.id} itemKey={ge.id} />);
+  await user.click(await screen.findByRole('button', { name: 'KG 20' }));
+  await user.type(screen.getByRole('textbox', { name: 'KG' }), '{Control>}a{/Control}91{Enter}');
+  expect(screen.getByRole('button', { name: 'KG 91' })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Remove 25 kg pair' })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Remove 10 kg pair' })).toBeInTheDocument();
+  expect(screen.getByText('+0.5')).toBeInTheDocument();
 });
