@@ -5,7 +5,9 @@ import { getCatalog } from './catalogRepo';
 import {
   SessionEndedError,
   addSet,
+  clearHistory,
   closeStaleSessions,
+  deleteHistorySets,
   deleteExerciseSets,
   deleteSession,
   deleteSet,
@@ -366,5 +368,30 @@ describe('deleting', () => {
     expect((await db.sessions.get(s.id))!.lastActivityAt).toBe(T0 + 4);
     await finishSession(s.id, T0 + 5);
     await expect(deleteExerciseSets(s.id, 'c:' + f.catalogId, T0 + 6)).rejects.toBeInstanceOf(SessionEndedError);
+  });
+});
+
+describe('history editing', () => {
+  test('deleteHistorySets works on ended sessions and removes a session left empty', async () => {
+    const s = await startSession(g.id, T0);
+    const a = await addSet(s.id, item, 62, 10, T0 + 1);
+    const b = await addSet(s.id, item, 64, 8, T0 + 2);
+    await finishSession(s.id, T0 + 3);
+    await deleteHistorySets([a.id]);
+    expect((await db.sets.toArray()).map((x) => x.id)).toEqual([b.id]);
+    expect(await db.sessions.get(s.id)).toBeDefined();
+    await deleteHistorySets([b.id, 'missing']);
+    expect(await db.sets.count()).toBe(0);
+    expect(await db.sessions.get(s.id)).toBeUndefined();
+  });
+
+  test('clearHistory removes every session and set but keeps gyms and machines', async () => {
+    const s = await startSession(g.id, T0);
+    await addSet(s.id, item, 62, 10, T0 + 1);
+    await clearHistory();
+    expect(await db.sessions.count()).toBe(0);
+    expect(await db.sets.count()).toBe(0);
+    expect(await db.gyms.count()).toBe(1);
+    expect(await db.gymExercises.count()).toBe(1);
   });
 });

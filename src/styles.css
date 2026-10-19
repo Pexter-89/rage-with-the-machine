@@ -857,3 +857,45 @@ textarea {
   max-height: 90dvh;
   overflow-y: auto;
 }
+
+/* ---- history editing ---- */
+.data-table tr.clickable {
+  cursor: pointer;
+}
+
+.link-btn {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+[data-theme='dark'] .link-btn,
+:root:not([data-theme]) .link-btn {
+  color: #7aa7ff;
+}
+
+.history-sets {
+  gap: 6px;
+}
+
+.history-set {
+  font-weight: 500;
+  cursor: default;
+}
+
+.split > .split-x.armed {
+  width: auto;
+  padding: 0 14px;
+  color: #fff;
+  font-size: 0.95rem;
+}
+
+.btn-danger-text {
+  color: var(--danger);
+  margin-top: 12px;
+}

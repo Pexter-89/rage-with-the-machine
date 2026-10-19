@@ -8,7 +8,10 @@ import { formatDate } from '../../domain/dates';
 import { formatWeight } from '../../domain/metrics';
 import { buildSeries, buildSessionList, buildTableRows, gymColor } from '../../domain/progress';
 import { emptySlice, filterSets, sliceOptions, type Slice } from '../../domain/slicing';
+import { clearHistory } from '../../db/sessionRepo';
 import type { Category } from '../../domain/types';
+import ConfirmSheet from '../components/ConfirmSheet';
+import HistorySheet from '../components/HistorySheet';
 import ProgressChart from '../components/ProgressChart';
 import TopBar from '../components/TopBar';
 
@@ -19,6 +22,9 @@ const toNum = (v: string) => (v === '' ? null : Number(v));
 export default function Progress() {
   const [slice, setSlice] = useState<Slice>(emptySlice);
   const [metric, setMetric] = useState<'e1rm' | 'volume'>('e1rm');
+  /** The session whose sets are open in the history sheet. */
+  const [opened, setOpened] = useState<{ sessionId: string; title: string } | null>(null);
+  const [confirmClear, setConfirmClear] = useState(false);
   const data = useLiveQuery(async () => {
     const [sets, gyms, catalog] = await Promise.all([
       db.sets.toArray(),
@@ -54,6 +60,7 @@ export default function Progress() {
       filterSets(sets, { ...emptySlice(), category: slice.category }, catalog).map((s) => s.catalogId),
     );
     return {
+      filtered,
       years,
       months,
       weeks,
@@ -83,6 +90,25 @@ export default function Progress() {
   };
   const volumeTitle = ex?.assisted ? 'Volume (assist kg)' : ex?.kind === 'bodyweight' ? 'Volume (added kg)' : 'Volume';
   const fixedMetric = series ? series.metric === 'reps' || series.metric === 'assist' : false;
+
+  const open = (r: { sessionId: string; date: number; gymId: string }) =>
+    setOpened({ sessionId: r.sessionId, title: `${formatDate(r.date)} · ${gymName(r.gymId)}` });
+  const dateButton = (r: { sessionId: string; date: number; gymId: string }) => (
+    <button
+      className="link-btn"
+      onClick={(e) => {
+        e.stopPropagation();
+        open(r);
+      }}
+    >
+      {formatDate(r.date)}
+    </button>
+  );
+  const openedSets = opened
+    ? view.filtered.filter((x) => x.sessionId === opened.sessionId).sort((a, b) => a.completedAt - b.completedAt)
+    : [];
+  const nameById = new Map(catalog.map((c) => [c.id, c.name]));
+  const sessionCount = new Set(sets!.map((x) => x.sessionId)).size;
 
   const gymCell = (gymId: string) => (
     <td>
@@ -209,8 +235,8 @@ export default function Progress() {
                 </thead>
                 <tbody>
                   {rows.map((r) => (
-                    <tr key={r.sessionId}>
-                      <td>{formatDate(r.date)}</td>
+                    <tr key={r.sessionId} className="clickable" onClick={() => open(r)}>
+                      <td>{dateButton(r)}</td>
                       {gymCell(r.gymId)}
                       <td>{r.setsText}</td>
                       <td>{r.bestE1rm === null ? '–' : formatWeight(Math.round(r.bestE1rm * 10) / 10)}</td>
@@ -239,8 +265,8 @@ export default function Progress() {
                 </thead>
                 <tbody>
                   {sessions.map((s) => (
-                    <tr key={s.sessionId}>
-                      <td>{formatDate(s.date)}</td>
+                    <tr key={s.sessionId} className="clickable" onClick={() => open(s)}>
+                      <td>{dateButton(s)}</td>
                       {gymCell(s.gymId)}
                       <td>{s.exercises.join(', ')}</td>
                     </tr>
@@ -251,6 +277,32 @@ export default function Progress() {
           )}
         </>
       )}
+      {!!(rows?.length || sessions?.length) && <p className="hint">Tap a row to see or delete its sets.</p>}
+
+      {sets!.length > 0 && (
+        <button className="btn btn-ghost btn-danger-text" onClick={() => setConfirmClear(true)}>
+          Clear all history
+        </button>
+      )}
+
+      <HistorySheet
+        key={opened?.sessionId ?? ''}
+        title={opened?.title ?? ''}
+        sets={openedSets}
+        nameOf={ex ? null : (x) => nameById.get(x.catalogId) ?? x.catalogId}
+        onClose={() => setOpened(null)}
+      />
+      <ConfirmSheet
+        title="Clear all history?"
+        message={
+          confirmClear
+            ? `All ${sessionCount} ${sessionCount === 1 ? 'session' : 'sessions'} and ${sets!.length} ${sets!.length === 1 ? 'set' : 'sets'} at every gym will be deleted. Gyms and machines are kept. Export a backup in Settings first if you may want them back.`
+            : null
+        }
+        confirmLabel="Delete all"
+        onConfirm={clearHistory}
+        onClose={() => setConfirmClear(false)}
+      />
     </main>
   );
 }
