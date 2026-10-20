@@ -205,6 +205,7 @@ export default function Progress() {
               onClick={() => setMetric('e1rm')}
             >
               e1RM
+              <span className="metric-sub">Est. 1-rep max (best set)</span>
             </button>
             <button
               className="btn btn-small"
@@ -213,6 +214,7 @@ export default function Progress() {
               onClick={() => setMetric('volume')}
             >
               Volume
+              <span className="metric-sub">Weight × reps, all sets</span>
             </button>
           </div>
           {series.points.length > 0 && (

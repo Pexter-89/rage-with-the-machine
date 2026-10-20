@@ -826,6 +826,20 @@ textarea {
   flex: 1;
 }
 
+.segmented .btn:has(.metric-sub) {
+  padding: 6px 8px;
+  line-height: 1.2;
+}
+
+/* The metric's one-line meaning, in small type under its name. */
+.metric-sub {
+  display: block;
+  margin-top: 2px;
+  font-size: 0.7rem;
+  font-weight: 400;
+  opacity: 0.8;
+}
+
 .segmented .btn[aria-pressed='true'] {
   background: var(--accent);
   color: var(--accent-text);
