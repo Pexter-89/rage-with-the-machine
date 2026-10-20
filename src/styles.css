@@ -831,11 +831,11 @@ textarea {
   line-height: 1.2;
 }
 
-/* The metric's one-line meaning, in small type under its name. */
+/* What the metric means, in small type under its name. */
 .metric-sub {
   display: block;
   margin-top: 2px;
-  font-size: 0.7rem;
+  font-size: 0.6rem;
   font-weight: 400;
   opacity: 0.8;
 }

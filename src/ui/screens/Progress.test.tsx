@@ -107,10 +107,10 @@ test('metric toggle switches to volume', async () => {
   render(<Progress />);
   await user.selectOptions(await screen.findByLabelText('Exercise'), 'leg-press');
   expect(screen.getByRole('button', { name: /^e1RM/ })).toHaveAttribute('aria-pressed', 'true');
-  expect(screen.getByRole('button', { name: /^e1RM/ })).toHaveTextContent('Est. 1-rep max (best set)');
+  expect(screen.getByRole('button', { name: /^e1RM/ })).toHaveTextContent('Estimated one-rep max: the most you could lift once, based on your best set');
   await user.click(screen.getByRole('button', { name: /^Volume/ }));
   expect(screen.getByRole('button', { name: /^Volume/ })).toHaveAttribute('aria-pressed', 'true');
-  expect(screen.getByRole('button', { name: /^Volume/ })).toHaveTextContent('Weight × reps, all sets');
+  expect(screen.getByRole('button', { name: /^Volume/ })).toHaveTextContent('Weight × reps of every set in the session, added up');
   expect(lastConfig().data.datasets[0].data.map((p: { y: number }) => p.y)).toEqual([1000, 120 * 5 + 110 * 8]);
   expect(charts.destroyed).toBeGreaterThan(0);
 });
