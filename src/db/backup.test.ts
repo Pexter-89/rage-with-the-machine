@@ -15,7 +15,7 @@ async function seed() {
     id: 'ge1', gymId: 'g1', catalogId: 'leg-press', label: 'Technogym', notes: '',
     loading: { type: 'plate', base: 62, step: 2.5 }, hidden: false,
   });
-  await db.sessions.add({ id: 's1', gymId: 'g1', startedAt: T, endedAt: T + 3600_000, lastActivityAt: T + 3600_000 });
+  await db.sessions.add({ id: 's1', gymId: 'g1', startedAt: T, endedAt: T + 3600_000, lastActivityAt: T + 3600_000, bodyweight: 82.5 });
   await db.sets.bulkAdd([
     { id: 'x1', sessionId: 's1', gymId: 'g1', catalogId: 'leg-press', gymExerciseId: 'ge1', order: 1, weight: 92, reps: 10, baseWeight: 62, unit: 'kg', completedAt: T + 1000 },
     { id: 'x2', sessionId: 's1', gymId: 'g1', catalogId: 'pull-up', gymExerciseId: null, order: 1, weight: 5, reps: 8, baseWeight: null, unit: 'kg', completedAt: T + 500 },
@@ -80,7 +80,7 @@ describe('buildCsvRows', () => {
     expect(rows.map((r) => r.exercise)).toEqual(['Pull-Up', 'Leg Press']);
     expect(rows[1]).toMatchObject({
       gym: 'Home', category: 'Legs', machine: 'Technogym', setNo: 1, weight: 92, reps: 10,
-      unit: 'kg', baseWeight: 62, kind: 'machine',
+      unit: 'kg', baseWeight: 62, kind: 'machine', bodyweight: 82.5,
     });
     expect(rows[0]).toMatchObject({ machine: '', kind: 'bodyweight', category: 'Back' });
     expect(setsToCsv(rows).split('\r\n')[1]).toContain(',Pull-Up,');

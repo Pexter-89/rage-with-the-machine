@@ -88,7 +88,7 @@ async function seedWithHistory(rows: [number, number][]) {
   return { g, s, ge, old };
 }
 
-test('shows last time from same gym: "Last time · 10 Oct 2026 · Kamppi" and summary', async () => {
+test('shows last time from same gym: "Last time · 10 Oct 2026 · Kamppi" and every set', async () => {
   const { s, ge, old } = await seedWithHistory([
     [60, 10],
     [62, 8],
@@ -96,7 +96,7 @@ test('shows last time from same gym: "Last time · 10 Oct 2026 · Kamppi" and su
   render(<Logging sessionId={s.id} itemKey={ge.id} />);
   expect(await screen.findByText(`Last time · ${formatDate(old.startedAt)} · Kamppi`)).toBeInTheDocument();
   expect(formatDate(old.startedAt)).toBe('10 Oct 2026');
-  expect(screen.getByText('2 sets · 8–10 reps · 60–62 kg')).toBeInTheDocument();
+  expect(screen.getByText('60×10 · 62×8 kg')).toBeInTheDocument();
 });
 
 test('no last time renders no box', async () => {
@@ -106,14 +106,76 @@ test('no last time renders no box', async () => {
   expect(screen.queryByText(/Last time/)).not.toBeInTheDocument();
 });
 
-test('prefills from last time last set', async () => {
+test('prefills the first set from last time first set', async () => {
   const { s, ge } = await seedWithHistory([
     [60, 10],
     [64, 8],
   ]);
   render(<Logging sessionId={s.id} itemKey={ge.id} />);
+  expect(await screen.findByRole('button', { name: 'KG 60' })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'REPS 10' })).toBeInTheDocument();
+});
+
+test('a ramp-up follows last time set by set, then repeats the latest set', async () => {
+  const user = userEvent.setup();
+  const { s, ge } = await seedWithHistory([
+    [60, 12],
+    [64, 8],
+  ]);
+  const first = render(<Logging sessionId={s.id} itemKey={ge.id} />);
+  await user.click(await screen.findByRole('button', { name: 'Complete set' }));
   expect(await screen.findByRole('button', { name: 'KG 64' })).toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'REPS 8' })).toBeInTheDocument();
+  await user.click(screen.getByRole('button', { name: 'Complete set' }));
+  await screen.findByRole('button', { name: /^2 64 kg × 8/ });
+  expect(screen.getByRole('button', { name: 'KG 64' })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'REPS 8' })).toBeInTheDocument();
+  // Reopening mid-exercise picks up at the next set of last time.
+  first.unmount();
+  await db.sets.where('sessionId').equals(s.id).and((x) => x.order === 2).delete();
+  render(<Logging sessionId={s.id} itemKey={ge.id} />);
+  expect(await screen.findByRole('button', { name: 'KG 64' })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'REPS 8' })).toBeInTheDocument();
+});
+
+test('a set that beats every earlier e1RM gets a PR badge; equalling it does not', async () => {
+  const user = userEvent.setup();
+  const { s, ge } = await seedWithHistory([[62, 10]]);
+  render(<Logging sessionId={s.id} itemKey={ge.id} />);
+  await user.click(await screen.findByRole('button', { name: 'Complete set' }));
+  expect(await screen.findByRole('button', { name: '1 62 kg × 10' })).toBeInTheDocument();
+  await user.click(screen.getByRole('button', { name: 'KG 62' }));
+  await user.type(screen.getByRole('textbox'), '{Control>}a{/Control}66{Enter}');
+  await user.click(screen.getByRole('button', { name: 'Complete set' }));
+  expect(await screen.findByRole('button', { name: '2 66 kg × 10 PR' })).toBeInTheDocument();
+});
+
+test('no PR badges without history', async () => {
+  const { s, ge } = await seed();
+  render(<Logging sessionId={s.id} itemKey={ge.id} />);
+  await userEvent.click(await screen.findByRole('button', { name: 'Complete set' }));
+  expect(await screen.findByRole('button', { name: '1 60 kg × 10' })).toBeInTheDocument();
+  expect(screen.queryByText('PR')).toBeNull();
+});
+
+test('the machine note shows under the name and can be edited there', async () => {
+  const user = userEvent.setup();
+  const { s, ge } = await seed();
+  render(<Logging sessionId={s.id} itemKey={ge.id} />);
+  await user.click(await screen.findByRole('button', { name: 'Add machine note' }));
+  const dialog = within(await screen.findByRole('dialog', { name: 'Machine note' }));
+  await user.type(dialog.getByRole('textbox', { name: 'Machine note' }), 'Seat 5 ');
+  await user.click(dialog.getByRole('button', { name: 'Save' }));
+  expect(await screen.findByRole('button', { name: 'Machine note: Seat 5' })).toHaveTextContent('Seat 5');
+  expect((await db.gymExercises.get(ge.id))!.notes).toBe('Seat 5');
+});
+
+test('free weights have no machine note', async () => {
+  const g = await addGym('Kamppi');
+  const s = await startSession(g.id, Date.now());
+  render(<Logging sessionId={s.id} itemKey="c:dumbbell-bench-press" />);
+  await screen.findByRole('button', { name: 'Complete set' });
+  expect(screen.queryByRole('button', { name: /machine note/i })).toBeNull();
 });
 
 test('Complete set saves to DB and new row prefilled with that set', async () => {

@@ -231,10 +231,58 @@ export async function getLastTime(
   return { sessionId, gymId: session.gymId, date: session.startedAt, sets: list.sort(byOrder) };
 }
 
-export function prefill(current: SetEntry[], last: LastTime | null): { weight: number; reps: number } | null {
+/**
+ * The next set's starting values. Set N starts from set N of last time, so a ramp-up repeats itself; where last
+ * time was climbing or holding, it never starts below today's latest weight. Past the end of last time it starts
+ * from this session's latest set. `fromLast` says set N of last time was followed; `snap` that the weight is
+ * last time's (today's weights may be typed values that are not on the wheel).
+ */
+export function prefill(
+  current: SetEntry[],
+  last: LastTime | null,
+): { weight: number; reps: number; fromLast: boolean; snap: boolean } | null {
   const pickLast = (sets: SetEntry[]) => (sets.length ? [...sets].sort(byOrder)[sets.length - 1] : null);
-  const s = pickLast(current) ?? (last ? pickLast(last.sets) : null);
-  return s ? { weight: s.weight, reps: s.reps } : null;
+  const lastSets = last ? [...last.sets].sort(byOrder) : [];
+  const latest = pickLast(current);
+  const next = lastSets[current.length];
+  if (next) {
+    const prev = lastSets[current.length - 1];
+    const keep = !!latest && !!prev && next.weight >= prev.weight && latest.weight > next.weight;
+    return { weight: keep ? latest.weight : next.weight, reps: next.reps, fromLast: true, snap: !keep };
+  }
+  return latest ? { weight: latest.weight, reps: latest.reps, fromLast: false, snap: false } : null;
+}
+
+/**
+ * Earlier sessions' sets to compare this session's records against: the same machine for machine exercises
+ * (machines differ between gyms), the same exercise at any gym otherwise.
+ */
+export async function recordHistory(item: PickerItem, byMachine: boolean, excludeSessionId: string): Promise<SetEntry[]> {
+  const sets =
+    byMachine && item.gymExerciseId
+      ? await db.sets.where('gymExerciseId').equals(item.gymExerciseId).toArray()
+      : await db.sets.where('catalogId').equals(item.catalogId).toArray();
+  return sets.filter((s) => s.sessionId !== excludeSessionId);
+}
+
+// ---- body weight ----
+
+/** Notes the body weight on an open session; null clears it. Not counted as activity. */
+export async function setSessionBodyweight(sessionId: string, kg: number | null): Promise<void> {
+  await db.transaction('rw', db.sessions, async () => {
+    await assertOpen(sessionId);
+    await db.sessions.update(sessionId, { bodyweight: kg });
+  });
+}
+
+/** The most recent body weight noted in any other session. */
+export async function lastBodyweight(excludeSessionId: string): Promise<number | null> {
+  const s = await db.sessions
+    .orderBy('startedAt')
+    .reverse()
+    .filter((x) => x.id !== excludeSessionId && typeof x.bodyweight === 'number')
+    .first();
+  return s?.bodyweight ?? null;
 }
 
 // ---- session summary ----
