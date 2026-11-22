@@ -48,3 +48,13 @@ One-time GitHub setup:
 1. Create a public repo named `rage-with-the-machine` under the [Pexter-89](https://github.com/Pexter-89) account.
 2. Settings, then Pages, then Source: GitHub Actions.
 3. Push `main`. The workflow in `.github/workflows/deploy.yml` tests, builds with the right base path and deploys.
+
+## Claude artifact build
+
+`npm run build:artifact` writes `dist-artifact/index.html`: one self-contained page (no service worker) to
+publish as a Claude artifact with `capabilities: {db: {rules: [{path: "", read: "admin", write: "admin"}]}, downloads: {}}`.
+In that build the data lives in the artifact's `db` (see `src/db/cloudSync.ts`): one collection per table
+(`gyms`, `customCatalog`, `gymExercises`, `sessions`, `sets`, `kv`), one document per row, document id = the
+row's `id` (`key` for `kv`), body = the row as JSON. The page loads every collection on start and replaces its
+local copy with it, writes local changes through, and applies changes made elsewhere (for example by Claude)
+while it is open. Without the capability it runs on local IndexedDB like the PWA.
