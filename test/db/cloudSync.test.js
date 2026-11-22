@@ -151,12 +151,20 @@ test('programs are mirrored like the other tables: load, write-through, remote c
 });
 
 test('rapid edits to one row coalesce into one write', async () => {
-  await connect().start();
+  // A debounce far longer than the test: the edits can only coalesce, never be split by a slow machine.
+  // The flush is then triggered by hand instead of waiting for the timer.
+  await connect({ debounceMs: 600_000 }).start();
+  const flushNow = async () => {
+    clearTimeout(sync.flushTimer);
+    sync.flushTimer = undefined;
+    sync.pump();
+    await sync.whenIdle();
+  };
   const gym = await addGym('A');
-  await sync.whenIdle();
+  await flushNow();
   const before = cloud.writes.length;
   for (const n of ['B', 'C', 'D', 'E']) await renameGym(gym.id, n);
-  await sync.whenIdle();
+  await flushNow();
   expect(cloud.writes.length - before).toBe(1);
   expect(cloud.get('gyms', gym.id)?.name).toBe('E');
 });

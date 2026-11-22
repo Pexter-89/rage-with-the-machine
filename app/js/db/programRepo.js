@@ -17,7 +17,9 @@ const cleanName = (name) => name.trim() || 'Program';
  * @returns {Promise<Program[]>}
  */
 export async function listPrograms() {
-  return (await db.programs.orderBy('order').toArray()).filter((p) => !p.archived);
+  return (await db.programs.toArray())
+    .filter((p) => !p.archived)
+    .sort((a, b) => a.order - b.order || a.name.localeCompare(b.name) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
 }
 
 /**
@@ -59,7 +61,8 @@ export async function addProgram({ name, items }, now) {
  * @returns {Promise<void>}
  */
 export async function updateProgram(id, { name, items }, now) {
-  await db.programs.update(id, { name: cleanName(name), items: items.map(clampItem), updatedAt: now });
+  const n = await db.programs.update(id, { name: cleanName(name), items: items.map(clampItem), updatedAt: now });
+  if (n === 0) throw new Error('This program no longer exists (it was deleted elsewhere), so the changes were not saved');
 }
 
 /**
@@ -83,8 +86,12 @@ export async function moveProgram(id, delta) {
     const i = list.findIndex((p) => p.id === id);
     const j = i + delta;
     if (i < 0 || j < 0 || j >= list.length) return;
-    await db.programs.update(list[i].id, { order: list[j].order });
-    await db.programs.update(list[j].id, { order: list[i].order });
+    // Duplicate `order` values would make a swap a no-op: renumber 0..n-1 first, then swap.
+    const ids = list.map((p) => p.id);
+    [ids[i], ids[j]] = [ids[j], ids[i]];
+    for (const [order, pid] of ids.entries()) {
+      await db.programs.update(pid, { order });
+    }
   });
 }
 

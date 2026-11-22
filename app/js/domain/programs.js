@@ -31,16 +31,16 @@ const isFreeLike = (e) => e.kind === 'free' || e.kind === 'bodyweight';
  */
 export function availabilityAt(entry, mine) {
   if (!entry) return { status: 'missing', key: null, machines: [] };
-  if (isFreeLike(entry)) {
-    const own = mine.find((ge) => ge.catalogId === entry.id);
-    if (own) return own.hidden ? missing() : { status: 'available', key: own.id, machines: [] };
-    return entry.defaultLoading ? { status: 'available', key: 'c:' + entry.id, machines: [] } : missing();
-  }
-  const machines = mine
-    .filter((ge) => ge.catalogId === entry.id && !ge.hidden)
-    .sort((a, b) => a.label.localeCompare(b.label));
+  const own = mine.filter((ge) => ge.catalogId === entry.id);
+  // A free/bodyweight exercise with no entry here at all uses the catalogue's default setting, like the picker.
+  if (own.length === 0)
+    return isFreeLike(entry) && entry.defaultLoading
+      ? { status: 'available', key: 'c:' + entry.id, machines: [] }
+      : missing();
+  // A gym may hold several entries for one exercise (removed ones with history stay hidden).
+  const machines = own.filter((ge) => !ge.hidden).sort((a, b) => a.label.localeCompare(b.label));
   if (machines.length === 0) return missing();
-  if (machines.length === 1) return { status: 'available', key: machines[0].id, machines };
+  if (machines.length === 1) return { status: 'available', key: machines[0].id, machines: isFreeLike(entry) ? [] : machines };
   return { status: 'choose', key: null, machines };
 }
 

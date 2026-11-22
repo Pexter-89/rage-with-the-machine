@@ -143,6 +143,27 @@ describe('backup', () => {
     }
   });
 
+  test('validateBackup rejects malformed programs with a one-line error', async () => {
+    await seed();
+    const good = JSON.parse(JSON.stringify(await exportBackup(T)));
+    const prog = { id: 'p', name: 'P', order: 0, archived: false, items: [{ catalogId: 'x', sets: 3, reps: 8 }] };
+    expect(validateBackup({ ...good, data: { ...good.data, programs: [prog] } }).ok).toBe(true);
+    for (const bad of [
+      null,
+      { ...prog, id: 1 },
+      { ...prog, name: undefined },
+      { ...prog, items: {} },
+      { ...prog, items: [null] },
+      { ...prog, items: [{ catalogId: 1, sets: 3, reps: 8 }] },
+      { ...prog, items: [{ catalogId: 'x', sets: 0, reps: 8 }] },
+      { ...prog, items: [{ catalogId: 'x', sets: 3, reps: 2.5 }] },
+    ]) {
+      const v = validateBackup({ ...good, data: { ...good.data, programs: [bad] } });
+      expect(v.ok).toBe(false);
+      if (!v.ok) expect(v.error).toMatch(/program/);
+    }
+  });
+
   test('invalid backup leaves data intact', async () => {
     await seed();
     const v = validateBackup({ format: 'nope' });

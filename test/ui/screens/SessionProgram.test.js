@@ -155,3 +155,17 @@ test('a session without a plan shows no plan list', async () => {
   await screen.findByText('Kamppi');
   expect(screen.queryByRole('list', { name: 'Plan' })).toBeNull();
 });
+
+test('sets logged on a second machine of a planned exercise stay reachable as an extra card', async () => {
+  const { g, s } = await seed([{ catalogId: 'lat-pulldown', sets: 3, reps: 12 }]);
+  const a = await machine(g.id, 'lat-pulldown', 'Cable tower');
+  const b = await machine(g.id, 'lat-pulldown', 'Plate-loaded');
+  await log(s.id, 'lat-pulldown', b.id);
+  await new Promise((r) => setTimeout(r, 5));
+  await log(s.id, 'lat-pulldown', a.id); // last used: the plan card resolves to Cable tower
+  render(html`<${Session} sessionId=${s.id} />`);
+  expect(await screen.findByText('Extra')).toBeInTheDocument();
+  const del = screen.getAllByRole('button', { name: /^Delete .* sets$/ });
+  expect(del).toHaveLength(1);
+  expect(screen.getByText('Plate-loaded')).toBeInTheDocument();
+});

@@ -221,3 +221,25 @@ describe('session → program', () => {
 test('formatTarget', () => {
   expect(formatTarget({ sets: 3, reps: 10 })).toBe('3 × 10');
 });
+
+describe('availabilityAt with several entries for one exercise', () => {
+  test('a hidden entry does not hide a visible replacement', () => {
+    const mine = [ge('old', 'chest-press', { hidden: true }), ge('new', 'chest-press')];
+    expect(availabilityAt(entry('chest-press'), mine)).toMatchObject({ status: 'available', key: 'new' });
+  });
+  test('several visible entries need a choice, and last-used resolves it', () => {
+    const mine = [ge('old', 'chest-press', { hidden: true }), ge('a', 'chest-press'), ge('b', 'chest-press')];
+    expect(availabilityAt(entry('chest-press'), mine).status).toBe('choose');
+    const sets = [set({ catalogId: 'chest-press', gymExerciseId: 'b' })];
+    expect(resolveAt(entry('chest-press'), mine, sets, 'g')).toMatchObject({ status: 'available', key: 'b' });
+  });
+  test('free exercises: no entry is available, only hidden entries are missing, one visible is used', () => {
+    const free = BUILT_IN_CATALOG.find((e) => e.kind === 'free' && e.defaultLoading);
+    expect(availabilityAt(free, []).key).toBe('c:' + free.id);
+    expect(availabilityAt(free, [ge('h', free.id, { hidden: true })]).status).toBe('missing');
+    expect(availabilityAt(free, [ge('h', free.id, { hidden: true }), ge('v', free.id)])).toMatchObject({
+      status: 'available',
+      key: 'v',
+    });
+  });
+});

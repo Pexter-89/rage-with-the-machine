@@ -44,6 +44,17 @@ export async function exportBackup(now) {
  */
 const isObject = (v) => typeof v === 'object' && v !== null && !Array.isArray(v);
 
+/** @param {unknown} v */
+const isPosInt = (v) => Number.isInteger(v) && /** @type {number} */ (v) > 0;
+
+/** @param {unknown} p */
+const isValidProgram = (p) =>
+  isObject(p) &&
+  typeof p.id === 'string' &&
+  typeof p.name === 'string' &&
+  Array.isArray(p.items) &&
+  p.items.every((i) => isObject(i) && typeof i.catalogId === 'string' && isPosInt(i.sets) && isPosInt(i.reps));
+
 /**
  * @param {unknown} json
  * @returns {{ ok: true, file: BackupFile } | { ok: false, error: string }}
@@ -60,6 +71,11 @@ export function validateBackup(json) {
   for (const key of OPTIONAL_KEYS) {
     if (data[key] !== undefined && !Array.isArray(data[key]))
       return { ok: false, error: `Backup's "${key}" is not a list.` };
+  }
+  if (Array.isArray(data.programs)) {
+    for (const p of data.programs) {
+      if (!isValidProgram(p)) return { ok: false, error: 'Backup has an invalid program.' };
+    }
   }
   if (!isObject(data.settings)) return { ok: false, error: 'Backup is missing its settings.' };
   return { ok: true, file: json };

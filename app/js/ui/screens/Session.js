@@ -198,10 +198,11 @@ export default function Session({ sessionId }) {
     const catalog = await getCatalog();
     const exercises = await sessionExercises(sessionId);
     const plan = await planCards(session, catalog);
-    const planned = new Set(session.plan?.map((p) => p.catalogId) ?? []);
+    // Only the key a plan card resolves to is covered by the plan; other machines show as extras.
+    const planned = new Set((plan ?? []).map((c) => c.key).filter(Boolean));
     const cards = await Promise.all(
       exercises
-        .filter((ex) => !planned.has(ex.catalogId))
+        .filter((ex) => !planned.has(ex.key))
         .map(async (ex) => {
           const item = await resolveItem(session.gymId, ex.key, catalog);
           const name = item?.name ?? catalog.find((c) => c.id === ex.catalogId)?.name ?? ex.catalogId;

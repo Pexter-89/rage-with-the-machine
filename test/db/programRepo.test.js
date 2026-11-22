@@ -171,3 +171,22 @@ test('schema version 2 adds programs to a version 1 database and keeps its data'
   expect(await upgraded.programs.count()).toBe(0);
   upgraded.close();
 });
+
+test('updateProgram on a program deleted elsewhere throws instead of dropping the edit', async () => {
+  const p = await addProgram({ name: 'A', items: ITEMS }, T);
+  await deleteProgram(p.id);
+  await expect(updateProgram(p.id, { name: 'B', items: ITEMS }, T + 1)).rejects.toThrow(/no longer exists/);
+  expect(await getProgram(p.id)).toBeUndefined();
+});
+
+test('moveProgram works when order values are duplicated', async () => {
+  await db.programs.bulkAdd(
+    ['c', 'a', 'b'].map((name) => ({ id: 'id-' + name, name, order: 0, archived: false, items: [], createdAt: T, updatedAt: T })),
+  );
+  expect((await listPrograms()).map((p) => p.name)).toEqual(['a', 'b', 'c']);
+  await moveProgram('id-c', -1);
+  expect((await listPrograms()).map((p) => p.name)).toEqual(['a', 'c', 'b']);
+  expect((await listPrograms()).map((p) => p.order)).toEqual([0, 1, 2]);
+  await moveProgram('id-a', 1);
+  expect((await listPrograms()).map((p) => p.name)).toEqual(['c', 'a', 'b']);
+});
