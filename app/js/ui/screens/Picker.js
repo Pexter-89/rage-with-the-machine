@@ -3,9 +3,8 @@ import { useLiveQuery } from '../../lib/useLiveQuery.js';
 import { db } from '../../db/db.js';
 import { getCatalog } from '../../db/catalogRepo.js';
 import { availableExercises } from '../../db/gymRepo.js';
-import { CATEGORIES } from '../../domain/catalog.js';
-import { BodyIcon, EquipmentIcon } from '../components/Icons.js';
 import ImportMachineSheet from '../components/ImportMachineSheet.js';
+import PickerColumns from '../components/PickerColumns.js';
 import TopBar from '../components/TopBar.js';
 import { navigate } from '../router.js';
 import { html } from '../../lib/html.js';
@@ -33,10 +32,6 @@ export default function Picker({ sessionId }) {
       </main>
     `;
 
-  const columns = CATEGORIES.map((c) => ({ ...c, items: data.items.filter((i) => i.category === c.id) })).filter(
-    (c) => c.items.length > 0,
-  );
-
   return html`
     <main className="screen picker">
       <${TopBar} route=${route} title=${data.gymName}>
@@ -44,37 +39,7 @@ export default function Picker({ sessionId }) {
           Import
         </button>
       </${TopBar}>
-      <div className="columns">
-        ${columns.map(
-          (c) =>
-            html`
-          <section key=${c.id} className="column">
-            <h2 className="column-title">
-              <${BodyIcon} category=${c.id} className="column-icon" />
-              ${c.name}
-            </h2>
-            <div className="column-items">
-              ${c.items.map(
-                (i) =>
-                  html`
-                <button
-                  key=${i.key}
-                  className="btn pick-item"
-                  onClick=${() => navigate({ name: 'log', sessionId, key: i.key })}
-                >
-                  <span className="pick-head">
-                    <${EquipmentIcon} equipment=${i.equipment} className="pick-icon" />
-                    <span className="card-name">${i.name}</span>
-                  </span>
-                  ${i.label && html`<span className="card-label">${i.label}</span>`}
-                </button>
-              `,
-              )}
-            </div>
-          </section>
-        `,
-        )}
-      </div>
+      <${PickerColumns} items=${data.items} onPick=${(i) => navigate({ name: 'log', sessionId, key: i.key })} />
       <button className="btn btn-ghost" onClick=${() => navigate({ name: 'session', sessionId })}>
         ‹ Back
       </button>

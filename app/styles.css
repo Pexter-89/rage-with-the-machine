@@ -1115,3 +1115,158 @@ textarea.paste-area {
   line-height: 1.4;
   overflow-wrap: anywhere;
 }
+
+/* ---- programs ---- */
+.split > .btn:only-child {
+  border-radius: 12px;
+}
+
+/* Home: the right half of a gym's start button opens its program list. */
+.split > .btn-primary.split-x {
+  color: var(--accent-text);
+  border-left-color: rgba(255, 255, 255, 0.28);
+}
+
+.split-big > .split-programs {
+  width: auto;
+  min-width: 96px;
+  padding: 0 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.row .program-start {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+}
+
+.program-meta {
+  font-size: 0.85rem;
+  font-weight: 400;
+  opacity: 0.9;
+}
+
+.program-missing {
+  font-weight: 700;
+}
+
+.program-item-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.program-item-target {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.times {
+  color: var(--muted);
+}
+
+.stepper {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.stepper .btn {
+  background: var(--bg);
+}
+
+.stepper-value {
+  min-width: 2ch;
+  font-size: 1.1rem;
+  font-weight: 700;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.columns.in-sheet {
+  flex: none;
+  height: 62dvh;
+}
+
+.session-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.session-cards .section-title {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.plan-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.plan-check {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: 2px solid var(--muted);
+  border-radius: 50%;
+  font-size: 0.8rem;
+  line-height: 1;
+}
+
+.plan-item.done .plan-check {
+  border-color: var(--ok);
+  background: var(--ok);
+  color: #fff;
+}
+
+.plan-item.done .card-name {
+  color: var(--muted);
+}
+
+.plan-item .card-label,
+.plan-item .card-summary {
+  padding-left: 30px;
+}
+
+.plan-item.missing .card-summary {
+  color: var(--hl);
+}
+
+.split > .split-swap {
+  width: 72px;
+  color: var(--text);
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.swap-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+
+.target {
+  margin: 0;
+  color: var(--hl);
+  font-size: 0.95rem;
+  font-weight: 700;
+  text-align: center;
+}

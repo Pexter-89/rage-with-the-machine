@@ -459,3 +459,30 @@ test('stack add-on: the switch adds its weight to the logged total, and last tim
     expect((await db.sets.where('sessionId').equals(s.id).sortBy('order')).map((x) => x.weight)).toEqual([47.5, 45]),
   );
 });
+
+describe('session from a program', () => {
+  test('shows "Target 3 × 12" and, with no history, starts the reps wheel at the target', async () => {
+    const { s, ge } = await seed();
+    await db.sessions.update(s.id, { programId: 'p', plan: [{ catalogId: 'leg-press', sets: 3, reps: 12 }] });
+    render(html`<${Logging} sessionId=${s.id} itemKey=${ge.id} />`);
+    expect(await screen.findByText('Target 3 × 12')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'REPS 12' })).toBeInTheDocument();
+  });
+
+  test('with history, last time still sets the wheels; the target is shown alongside', async () => {
+    const { s, ge } = await seedWithHistory([[60, 9]]);
+    await db.sessions.update(s.id, { plan: [{ catalogId: 'leg-press', sets: 4, reps: 6 }] });
+    render(html`<${Logging} sessionId=${s.id} itemKey=${ge.id} />`);
+    expect(await screen.findByText('Target 4 × 6')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'REPS 9' })).toBeInTheDocument();
+  });
+
+  test('an exercise outside the plan shows no target', async () => {
+    const { s, ge } = await seed();
+    await db.sessions.update(s.id, { plan: [{ catalogId: 'pull-up', sets: 3, reps: 8 }] });
+    render(html`<${Logging} sessionId=${s.id} itemKey=${ge.id} />`);
+    await screen.findByRole('button', { name: 'Complete set' });
+    expect(screen.queryByText(/^Target/)).toBeNull();
+    expect(screen.getByRole('button', { name: 'REPS 10' })).toBeInTheDocument();
+  });
+});

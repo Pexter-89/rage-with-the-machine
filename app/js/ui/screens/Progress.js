@@ -11,6 +11,7 @@ import { emptySlice, filterSets, sliceOptions } from '../../domain/slicing.js';
 import { clearHistory } from '../../db/sessionRepo.js';
 import ConfirmSheet from '../components/ConfirmSheet.js';
 import HistorySheet from '../components/HistorySheet.js';
+import SaveProgramSheet from '../components/SaveProgramSheet.js';
 import ProgressChart from '../components/ProgressChart.js';
 import TopBar from '../components/TopBar.js';
 import { Fragment, html } from '../../lib/html.js';
@@ -26,6 +27,9 @@ export default function Progress() {
   /** The session whose sets are open in the history sheet. */
   const [opened, setOpened] = useState(null);
   const [confirmClear, setConfirmClear] = useState(false);
+  /** A session being saved as a program: { sessionId, name }. */
+  const [saving, setSaving] = useState(null);
+  const [savedAs, setSavedAs] = useState(null);
   const data = useLiveQuery(async () => {
     const [sets, gyms, catalog] = await Promise.all([
       db.sets.toArray(),
@@ -89,7 +93,12 @@ export default function Progress() {
   const volumeTitle = ex?.assisted ? 'Volume (assist kg)' : ex?.kind === 'bodyweight' ? 'Volume (added kg)' : 'Volume';
   const fixedMetric = series ? series.metric === 'reps' || series.metric === 'assist' : false;
 
-  const open = (r) => setOpened({ sessionId: r.sessionId, title: `${formatDate(r.date)} · ${gymName(r.gymId)}` });
+  const open = (r) =>
+    setOpened({
+      sessionId: r.sessionId,
+      title: `${formatDate(r.date)} · ${gymName(r.gymId)}`,
+      programName: `${gymName(r.gymId)} ${formatDate(r.date)}`.trim(),
+    });
   const dateButton = (r) =>
     html`
     <button
@@ -317,7 +326,8 @@ export default function Progress() {
         </${Fragment}>
       `
       }
-      ${!!(rows?.length || sessions?.length) && html`<p className="hint">Tap a row to see or delete its sets.</p>`}
+      ${!!(rows?.length || sessions?.length) && html`<p className="hint">Tap a row to see or delete its sets, or save its session as a program.</p>`}
+      ${savedAs && html`<p className="hint" role="status">${`Saved as program “${savedAs}”`}</p>`}
 
       ${
         sets.length > 0 &&
@@ -334,6 +344,20 @@ export default function Progress() {
         sets=${openedSets}
         nameOf=${ex ? null : (x) => nameById.get(x.catalogId) ?? x.catalogId}
         onClose=${() => setOpened(null)}
+        onSaveAsProgram=${
+          opened
+            ? () => {
+                setSaving({ sessionId: opened.sessionId, name: opened.programName });
+                setOpened(null);
+              }
+            : null
+        }
+      />
+      <${SaveProgramSheet}
+        sessionId=${saving?.sessionId ?? null}
+        defaultName=${saving?.name ?? ''}
+        onClose=${() => setSaving(null)}
+        onSaved=${(p) => setSavedAs(p.name)}
       />
       <${ConfirmSheet}
         title="Clear all history?"

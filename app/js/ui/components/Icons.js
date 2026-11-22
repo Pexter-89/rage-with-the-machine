@@ -152,3 +152,17 @@ export function EquipmentIcon({ equipment, size = 18, className }) {
     </svg>
   `;
 }
+
+/**
+ * A checklist: the program list.
+ * @param {IconProps} props
+ */
+export function ListIcon({ size = 20, className }) {
+  return html`
+    <svg className=${className} width=${size} height=${size} viewBox="0 0 24 24" aria-hidden="true">
+      <g ...${STROKE}>
+        <path d="M4 6.5l1.5 1.5 2.5-3M4 12.5l1.5 1.5 2.5-3M4 18.5l1.5 1.5 2.5-3M11 7h9M11 13h9M11 19h9" />
+      </g>
+    </svg>
+  `;
+}

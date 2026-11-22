@@ -36,7 +36,7 @@ test('Home lists active gyms in order as start buttons', async () => {
 test('tapping a gym starts a session and navigates to it', async () => {
   await addGym('Kamppi');
   render(html`<${Home} />`);
-  await userEvent.click(await screen.findByRole('button', { name: /Kamppi/ }));
+  await userEvent.click(await screen.findByRole('button', { name: /^▶ Kamppi/ }));
   await vi.waitFor(async () => expect(await getOpenSession()).not.toBeNull());
   expect(location.hash).toMatch(/^#\/session\//);
 });
@@ -119,4 +119,16 @@ test('the ✕ on the resume button deletes the open session after confirming', a
   await user.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Delete' }));
   await vi.waitFor(async () => expect(await db.sessions.get(s.id)).toBeUndefined());
   await vi.waitFor(() => expect(screen.queryByRole('button', { name: /Resume/ })).toBeNull());
+});
+
+test('each gym button is split: the right half opens that gym’s program list', async () => {
+  const g = await addGym('Kamppi');
+  await addGym('Otaniemi');
+  render(html`<${Home} />`);
+  const programs = await screen.findByRole('button', { name: 'Programs at Kamppi' });
+  expect(programs).toHaveTextContent('Programs');
+  expect(screen.getByRole('button', { name: 'Programs at Otaniemi' })).toBeInTheDocument();
+  await userEvent.click(programs);
+  expect(location.hash).toBe(`#/programs/${g.id}`);
+  expect(await db.sessions.count()).toBe(0); // the right half starts nothing
 });

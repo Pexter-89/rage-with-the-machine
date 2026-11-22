@@ -12,6 +12,9 @@ const routes = [
   { name: 'exercise', gymId: 'g1', geId: 'ge1' },
   { name: 'progress' },
   { name: 'settings' },
+  { name: 'programs', gymId: 'g1' },
+  { name: 'program', gymId: 'g1', programId: 'new' },
+  { name: 'program', gymId: 'g 1', programId: 'p/1' },
 ];
 
 test('parseRoute/toHash round-trip for every route kind incl. encoded key', () => {
@@ -142,5 +145,7 @@ describe('history mirrors the menu hierarchy', () => {
     expect(router.parentOf({ name: 'log', sessionId: 's', key: 'k' })).toEqual({ name: 'session', sessionId: 's' });
     expect(router.parentOf({ name: 'exercise', gymId: 'g', geId: 'new' })).toEqual({ name: 'gym', gymId: 'g' });
     expect(router.parentOf({ name: 'home' })).toBeNull();
+    expect(router.parentOf({ name: 'programs', gymId: 'g' })).toEqual({ name: 'home' });
+    expect(router.parentOf({ name: 'program', gymId: 'g', programId: 'p' })).toEqual({ name: 'programs', gymId: 'g' });
   });
 });

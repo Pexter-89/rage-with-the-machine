@@ -11,6 +11,7 @@ import {
 } from '../../db/sessionRepo.js';
 import { getSettings } from '../../db/settingsRepo.js';
 import ConfirmSheet from '../components/ConfirmSheet.js';
+import { ListIcon } from '../components/Icons.js';
 import { navigate } from '../router.js';
 import { Fragment, html } from '../../lib/html.js';
 
@@ -67,14 +68,24 @@ export default function Home() {
             </div>
           `
           }
-          <p className="hint">Start a session</p>
+          <p className="hint">Start a session, or pick a program</p>
           ${gyms.length === 0 && html`<p className="hint">No gyms yet. Add one under Gyms.</p>`}
           ${gyms.map(
             (g) =>
               html`
-            <button key=${g.id} className="btn btn-big btn-primary btn-left" onClick=${() => start(g.id)}>
-              ▶ ${g.name}
-            </button>
+            <div key=${g.id} className="split split-big gym-start">
+              <button className="btn btn-big btn-primary btn-left" onClick=${() => start(g.id)}>
+                ▶ ${g.name}
+              </button>
+              <button
+                className="btn btn-primary split-x split-programs"
+                aria-label=${`Programs at ${g.name}`}
+                onClick=${() => navigate({ name: 'programs', gymId: g.id })}
+              >
+                <${ListIcon} />
+                <span>Programs</span>
+              </button>
+            </div>
           `,
           )}
         </${Fragment}>

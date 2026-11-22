@@ -11,6 +11,8 @@ const UP_NAMES = {
   exercise: 'Exercise',
   progress: 'Progress',
   settings: 'Settings',
+  programs: 'Programs',
+  program: 'Program',
 };
 
 /**

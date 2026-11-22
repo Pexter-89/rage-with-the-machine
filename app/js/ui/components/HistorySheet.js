@@ -11,6 +11,7 @@ import { html } from '../../lib/html.js';
  * @property {SetEntry[]} sets The sets to show; the sheet is closed when empty.
  * @property {((s: SetEntry) => string) | null} nameOf Exercise name per set, or null to leave it out (when the table is for one exercise).
  * @property {() => void} onClose
+ * @property {(() => void) | null} [onSaveAsProgram] Shows "Save as program" (for one session's sets).
  */
 
 /**
@@ -18,7 +19,7 @@ import { html } from '../../lib/html.js';
  * so a stray tap never removes history.
  * @param {Props} props
  */
-export default function HistorySheet({ title, sets, nameOf, onClose }) {
+export default function HistorySheet({ title, sets, nameOf, onClose, onSaveAsProgram = null }) {
   const [armed, setArmed] = useState(null); // a set id, or 'all'
   const [error, setError] = useState(null);
 
@@ -60,6 +61,14 @@ export default function HistorySheet({ title, sets, nameOf, onClose }) {
         <p className="error" role="alert">
           ${error}
         </p>
+      `
+      }
+      ${
+        onSaveAsProgram &&
+        html`
+        <button className="btn btn-ghost" onClick=${onSaveAsProgram}>
+          Save as program
+        </button>
       `
       }
       <div className="nav-row">

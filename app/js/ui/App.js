@@ -5,6 +5,8 @@ import Gyms from './screens/Gyms.js';
 import Home from './screens/Home.js';
 import Logging from './screens/Logging.js';
 import Picker from './screens/Picker.js';
+import ProgramEdit from './screens/ProgramEdit.js';
+import Programs from './screens/Programs.js';
 import Progress from './screens/Progress.js';
 import Session from './screens/Session.js';
 import Settings from './screens/Settings.js';
@@ -29,6 +31,10 @@ export default function App() {
       return html`<${Progress} />`;
     case 'gym':
       return html`<${GymDetail} key=${route.gymId} gymId=${route.gymId} />`;
+    case 'programs':
+      return html`<${Programs} key=${route.gymId} gymId=${route.gymId} />`;
+    case 'program':
+      return html`<${ProgramEdit} key=${`${route.gymId}/${route.programId}`} gymId=${route.gymId} programId=${route.programId} />`;
     case 'exercise':
       return html`
         <${ExerciseEdit}

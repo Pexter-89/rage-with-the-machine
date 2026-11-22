@@ -220,3 +220,22 @@ test('Clear all history deletes every session and set after confirming, keeping 
   expect(await db.gyms.count()).toBe(2);
   expect(await screen.findByText('No sessions logged yet.')).toBeInTheDocument();
 });
+
+test('a completed session in history can be saved as a program', async () => {
+  const user = userEvent.setup();
+  render(html`<${Progress} />`);
+  const table = await screen.findByRole('table');
+  const rows = within(table).getAllByRole('row');
+  await user.click(rows[rows.length - 1]); // oldest: s1 at Alpha, leg press then push-up
+  const sheet = await screen.findByRole('dialog', { name: /Alpha$/ });
+  await user.click(within(sheet).getByRole('button', { name: 'Save as program' }));
+  const save = await screen.findByRole('dialog', { name: 'Save as program' });
+  expect(within(save).getByLabelText('Program name')).toHaveValue(`Alpha ${formatDate(day(0, 5))}`);
+  await user.click(within(save).getByRole('button', { name: 'Save' }));
+  expect(await screen.findByText(`Saved as program “Alpha ${formatDate(day(0, 5))}”`)).toBeInTheDocument();
+  const [p] = await db.programs.toArray();
+  expect(p.items).toEqual([
+    { catalogId: 'leg-press', sets: 1, reps: 10 },
+    { catalogId: 'push-up', sets: 1, reps: 12 },
+  ]);
+});

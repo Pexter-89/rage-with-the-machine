@@ -16,6 +16,7 @@ import {
 import { formatDate } from '../../domain/dates.js';
 import { parseRepsInput, parseWeightInput, reachableValues, snapToWheel, wheelValues } from '../../domain/loading.js';
 import { formatSetList, formatWeight, recordSetIds } from '../../domain/metrics.js';
+import { formatTarget, planItemFor } from '../../domain/programs.js';
 import ConfirmSheet from '../components/ConfirmSheet.js';
 import AddOnStack from '../components/AddOnStack.js';
 import PlatePicker from '../components/PlatePicker.js';
@@ -30,7 +31,7 @@ import { Fragment, html } from '../../lib/html.js';
 const REPS = Array.from({ length: 50 }, (_, i) => i + 1);
 
 /**
- * @typedef {{ status: 'home' } | { status: 'session' } | { status: 'ready', item: PickerItem, sets: SetEntry[], last: LastTime | null, lastGymName: string, history: SetEntry[] }} Loaded
+ * @typedef {{ status: 'home' } | { status: 'session' } | { status: 'ready', item: PickerItem, sets: SetEntry[], last: LastTime | null, lastGymName: string, history: SetEntry[], target: ProgramItem | null }} Loaded
  */
 
 /**
@@ -232,7 +233,11 @@ export default function Logging({ sessionId, itemKey }) {
       kind === 'bodyweight' || item.assisted
         ? []
         : await recordHistory(item, kind === 'machine', sessionId, session.gymId);
-    return { status: 'ready', item, sets, last, lastGymName: lastGym?.name ?? '', history };
+    // A session started from a program: this exercise's target, if it is in the plan.
+    const target = session.plan
+      ? planItemFor(session.plan, item.catalogId, await db.sets.where('sessionId').equals(sessionId).toArray())
+      : null;
+    return { status: 'ready', item, sets, last, lastGymName: lastGym?.name ?? '', history, target };
   }, [sessionId, itemKey]);
 
   // Computed once, when the data first loads; later live updates never overwrite the wheels.
@@ -259,11 +264,14 @@ export default function Logging({ sessionId, itemKey }) {
     </main>
   `;
   if (!data || data.status !== 'ready') return loadingScreen;
-  const { item, sets, last, lastGymName, history } = data;
+  const { item, sets, last, lastGymName, history, target } = data;
 
   if (!row) {
     const p = nextRow(item, sets, last);
-    setRow(p ? { weight: p.weight, reps: p.reps } : { weight: wheelValues(item.loading)[0] ?? 0, reps: 10 });
+    // With no history, a planned exercise starts at its target reps.
+    setRow(
+      p ? { weight: p.weight, reps: p.reps } : { weight: wheelValues(item.loading)[0] ?? 0, reps: target?.reps ?? 10 },
+    );
     return loadingScreen;
   }
 
@@ -298,6 +306,7 @@ export default function Logging({ sessionId, itemKey }) {
     <main className="screen logging">
       <${TopBar} route=${route} title=${item.name} />
       ${item.label && html`<p className="hint">${item.label}</p>`}
+      ${target && html`<p className="target">${`Target ${formatTarget(target)}`}</p>`}
       ${
         item.gymExerciseId &&
         html`

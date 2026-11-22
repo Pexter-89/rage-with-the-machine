@@ -1,7 +1,7 @@
 import { useSyncExternalStore } from 'react';
 
 /**
- * @typedef {{ name: 'home' } | { name: 'session', sessionId: string } | { name: 'pick', sessionId: string } | { name: 'log', sessionId: string, key: string } | { name: 'gyms' } | { name: 'gym', gymId: string } | { name: 'exercise', gymId: string, geId: string | 'new', catalogId?: string } | { name: 'progress' } | { name: 'settings' }} Route
+ * @typedef {{ name: 'home' } | { name: 'session', sessionId: string } | { name: 'pick', sessionId: string } | { name: 'log', sessionId: string, key: string } | { name: 'gyms' } | { name: 'gym', gymId: string } | { name: 'exercise', gymId: string, geId: string | 'new', catalogId?: string } | { name: 'progress' } | { name: 'settings' } | { name: 'programs', gymId: string } | { name: 'program', gymId: string, programId: string | 'new' }} Route
  */
 
 const enc = encodeURIComponent;
@@ -30,6 +30,10 @@ export function toHash(r) {
       return '#/progress';
     case 'settings':
       return '#/settings';
+    case 'programs':
+      return `#/programs/${enc(r.gymId)}`;
+    case 'program':
+      return `#/programs/${enc(r.gymId)}/${enc(r.programId)}`;
   }
 }
 
@@ -55,6 +59,10 @@ export function parseRoute(hash) {
           ? { name: 'exercise', gymId: d[1], geId: d[3], catalogId }
           : { name: 'exercise', gymId: d[1], geId: d[3] };
       }
+    } else if (d[0] === 'programs' && d[1]) {
+      // A gym's program list (programs are gym-independent; the gym is where a tap starts one).
+      if (d.length === 2) return { name: 'programs', gymId: d[1] };
+      if (d.length === 3) return { name: 'program', gymId: d[1], programId: d[2] };
     } else if (d[0] === 'progress' && d.length === 1) {
       return { name: 'progress' };
     } else if (d[0] === 'settings' && d.length === 1) {
@@ -79,7 +87,10 @@ export function parentOf(r) {
     case 'gyms':
     case 'progress':
     case 'settings':
+    case 'programs':
       return { name: 'home' };
+    case 'program':
+      return { name: 'programs', gymId: r.gymId };
     case 'pick':
     case 'log':
       return { name: 'session', sessionId: r.sessionId };
