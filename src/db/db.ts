@@ -9,8 +9,9 @@ export class RwtmDB extends Dexie {
   sets!: Table<SetEntry, string>;
   kv!: Table<{ key: string; value: unknown }, string>;
 
-  constructor() {
-    super('rwtm');
+  /** `options` lets the artifact build fall back to an in-memory IndexedDB (fake-indexeddb). */
+  constructor(options?: { indexedDB: IDBFactory; IDBKeyRange: typeof IDBKeyRange }) {
+    super('rwtm', options);
     // Schema versioning rules:
     // - Never edit the version(1) stores below; users' devices already hold that schema.
     // - To change the schema, add `this.version(n).stores({...}).upgrade(tx => ...)` with the next n.
@@ -38,6 +39,12 @@ export function closeOnVersionChange(database: RwtmDB = db, reload: () => void =
     database.close();
     reload();
   });
+}
+
+/** Swaps the live database (the artifact build uses it for its in-memory fallback). Call before anything opens it. */
+export function setDb(next: RwtmDB): void {
+  db.close();
+  db = next;
 }
 
 /** Tests: close and delete the current database, then open a fresh one. */
