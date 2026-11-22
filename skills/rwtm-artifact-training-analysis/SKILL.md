@@ -18,9 +18,10 @@ Collections (doc id = row `id`; body = the row):
 - `gyms`: `{id, name, order, archived}`
 - `customCatalog`: `{id, name, category, kind: "machine", builtIn: false}`; built-in exercises are not stored (table below)
 - `gymExercises`: `{id, gymId, catalogId, label, notes, loading, hidden}`; one machine at one gym
-- `sessions`: `{id, gymId, startedAt, endedAt|null, lastActivityAt, bodyweight?}`; times are epoch ms; `bodyweight` kg, absent or null when not noted; `endedAt: null` = still open
+- `sessions`: `{id, gymId, startedAt, endedAt|null, lastActivityAt, bodyweight?, programId?, plan?}`; times are epoch ms; `bodyweight` kg, absent or null when not noted; `endedAt: null` = still open. A session started from a program has `programId` and `plan: [{catalogId, sets, reps}]` (the targets as they were at start, after any swaps); both are absent otherwise.
 - `sets`: `{id, sessionId, gymId, catalogId, gymExerciseId|null, order, weight, reps, baseWeight|null, unit: "kg"|"level", completedAt}`. `weight` is the total load as logged (plate-loaded: includes the sled/bar `baseWeight`). `gymExerciseId` null = done without a gym machine (free weights, bodyweight, catalogue items).
 - `kv/settings`: `{key: "settings", value: {theme, autoCloseMinutes, lastBackupAt}}`; not needed for analysis.
+- `programs`: `{id, name, order, archived, items: [{catalogId, sets, reps}], createdAt, updatedAt}`; reusable, gym-independent programs (targets only, no weights). For history use each session's own `plan`, not the current program.
 
 Join: set → exercise via `catalogId` (built-in table, else `customCatalog`; unknown id: show the id); set → machine via `gymExerciseId` → `gymExercises.label`; set/session → gym name via `gymId`. Display dates in the user's local time zone if known (else say UTC).
 
@@ -47,8 +48,9 @@ If the user asks a specific question, answer just that with the relevant numbers
 2. **Per-exercise progress** (each scope with ≥ 2 sessions): first vs. latest vs. best e1RM (or reps / assistance), change in kg and %, volume trend; a small table per exercise or one combined table.
 3. **Plateaus/stalls**: scopes meeting the plateau rule, with the last best and when it was set. Also exercises not done in the last 4 weeks that were regular before.
 4. **Muscle-group balance**: average weekly sets per category over the last 4 weeks (or the whole period if shorter); flag categories with none or far fewer than others.
-5. **Body weight** (if any sessions have it): first, latest, min, max, change, dates.
-6. **3–5 suggestions**, each tied to a number shown above (e.g. "chest-press at Gym A: e1RM flat at 82.5 kg for 4 sessions → change rep range or add a set"). No generic advice without evidence.
+5. **Plan adherence** (only if sessions have a `plan`): per program, how many plan items reached their target sets (sets of that `catalogId` in the session ≥ `sets`), items skipped, extra exercises outside the plan, and reps vs. target reps. Report it as facts, not as a grade.
+6. **Body weight** (if any sessions have it): first, latest, min, max, change, dates.
+7. **3–5 suggestions**, each tied to a number shown above (e.g. "chest-press at Gym A: e1RM flat at 82.5 kg for 4 sessions → change rep range or add a set"). No generic advice without evidence.
 
 ## Honesty rules
 

@@ -13,13 +13,13 @@ these files directly. Edit a file, publish the folder again, reload.
 | `js/bootstrap.js` | Theme, closing stale sessions, persistent storage request |
 | `js/lib/html.js` | `html` tag (htm bound to React.createElement) and `Fragment`; every UI file imports it |
 | `js/lib/useLiveQuery.js` | `useLiveQuery(query, deps)`: re-renders when the Dexie tables a query read change |
-| `js/db/db.js` | Dexie database `rwtm`: tables and schema version |
+| `js/db/db.js` | Dexie database `rwtm`: tables and schema versions (2 added `programs`) |
 | `js/db/cloudSync.js` | Sync between Dexie and the artifact `db` capability |
-| `js/db/*Repo.js`, `backup.js`, `demo.js` | Reads and writes for gyms/machines, sessions/sets, settings, catalogue, backups, demo data |
-| `js/domain/*.js` | Pure logic: exercise catalogue, loading/weights, records and progress, CSV, Claude prompt and import format, JSON from pasted text (`jsonText.js`), `types.js` (record shapes as JSDoc) |
-| `js/ui/App.js`, `router.js` | Screen switch and hash routes (`#/gyms`, `#/session/<id>` ...) |
-| `js/ui/screens/*.js` | One file per screen: Home, Gyms, GymDetail, ExerciseEdit, Session, Picker, Logging, Progress, Settings |
-| `js/ui/components/*.js` | Sheets (including `ExportSheet`: Save file / Copy / the text, and `PasteBox`: paste-to-import), wheels, plate picker, chart, icons, rest timer |
+| `js/db/*Repo.js`, `backup.js`, `demo.js` | Reads and writes for gyms/machines, sessions/sets, programs (`programRepo.js`: list, add/edit/move/delete, start a session from one, swap a plan item, save a session as one), settings, catalogue, backups, demo data |
+| `js/domain/*.js` | Pure logic: exercise catalogue, loading/weights, records and progress, programs (`programs.js`: availability at a gym, machine choice, swap alternatives, plan progress, session → program), CSV, Claude prompt and import format, JSON from pasted text (`jsonText.js`), `types.js` (record shapes as JSDoc) |
+| `js/ui/App.js`, `router.js` | Screen switch and hash routes (`#/gyms`, `#/session/<id>`, `#/programs/<gymId>`, `#/programs/<gymId>/<programId or new>` ...) |
+| `js/ui/screens/*.js` | One file per screen: Home, Gyms, GymDetail, ExerciseEdit, Session (with a program's plan as a to-do list), Picker, Logging, Programs (a gym's program list), ProgramEdit, Progress, Settings |
+| `js/ui/components/*.js` | Sheets (including `ExportSheet`: Save file / Copy / the text, `PasteBox`: paste-to-import, `ExercisePickerSheet`: the whole catalogue, `SaveProgramSheet`), `PickerColumns` (the picker's category columns), wheels, stepper, plate picker, chart, icons, rest timer |
 | `js/ui/lib/*.js` | In-page confirm sheet, file save/share (downloads capability), error text |
 
 Tests live outside this folder (`test/`, mirroring `js/`) so they are not published.
@@ -44,17 +44,26 @@ body is the row as JSON:
 | `gyms` | `{ id, name, order, archived }` |
 | `gymExercises` | `{ id, gymId, catalogId, label, notes, loading, hidden }`: a machine at a gym |
 | `customCatalog` | `{ id, name, category, kind, equipment?, unilateral?, assisted?, defaultLoading?, builtIn: false }` |
-| `sessions` | `{ id, gymId, startedAt, endedAt, lastActivityAt, bodyweight? }` (times in ms; `endedAt` null while open) |
+| `sessions` | `{ id, gymId, startedAt, endedAt, lastActivityAt, bodyweight?, programId?, plan? }` (times in ms; `endedAt` null while open) |
 | `sets` | `{ id, sessionId, gymId, catalogId, gymExerciseId, order, weight, reps, baseWeight, unit, completedAt }` |
 | `kv` | `settings`: `{ key: "settings", value: { theme, autoCloseMinutes, lastBackupAt } }` |
+| `programs` | `{ id, name, order, archived, items: [{ catalogId, sets, reps }], createdAt, updatedAt }`: a gym-independent program |
+
+Programs hold catalogue exercises and target sets × reps, never weights or machines; each gym supplies its
+own machine (the only visible one, else the one last used there, else the user is asked once). A session
+started from a program has `programId` and `plan` (`[{ catalogId, sets, reps }]`, a copy taken at start, so
+editing or deleting the program never rewrites history; swapping a missing exercise edits only `plan`). Both
+fields are absent on sessions logged without a program and in older data. Backups carry `programs` (backup
+format still version 1); a backup without the list restores with no programs.
 
 `loading` is one of `{ type: "stack", weights, unit?, addOns? }`, `{ type: "plate", base, step }`,
 `{ type: "plates", base, plates, sides }`, `{ type: "free", start, step, max, bigStepFrom?, bigStep? }` or
 `{ type: "bodyweight", step, max }`. Built-in exercises (`catalogId`) are in `js/domain/catalog.js`. See
 `js/domain/types.js` for every field.
 
-A schema change needs a new `this.version(n)` in `db.js` (never edit version 1) and, if the cloud documents
-change shape, a migration that rewrites them.
+A schema change needs a new `this.version(n)` in `db.js` (never edit earlier versions; version 2 added
+`programs`) and, if the cloud documents change shape, a migration that rewrites them. A new table also goes
+into `TABLES`/`PRIMARY_KEY` in `cloudSync.js`, the backup, and the artifact's db rules (below).
 
 ## Changing a feature
 
@@ -93,8 +102,11 @@ change shape, a migration that rewrites them.
 - Link: https://claude.ai/artifact/1hz2hEAuUHzNTyBzoud7pc. Always republish to this link (from another
   conversation pass it as `url`); a new link means a new, empty database.
 - Capabilities declared at first publish (omit `capabilities` on republish to keep them):
-  `{db:{rules:[{path:<each of gyms, customCatalog, gymExercises, sessions, sets, kv>, read:"admin", write:"admin"}]}, user:{}, downloads:true}`.
-  Adding a collection means restating the full declaration with a rule for it.
+  `{db:{rules:[{path:<each of gyms, customCatalog, gymExercises, sessions, sets, kv, programs>, read:"admin", write:"admin"}]}, user:{}, downloads:true}`.
+  Adding a collection means restating the full declaration with a rule for it. The `programs` rule came
+  with programs: the publish that first ships them must restate the declaration including it (a rule per
+  collection; a single `path: ""` rule covers it already), or the page cannot load the `programs`
+  collection and stops at the load error screen.
 - `index.html` is page content only: claude.ai adds the doctype/head/body skeleton at publish.
 - The data lives in the artifact's database, not in the page, so republishing never touches it.
 
