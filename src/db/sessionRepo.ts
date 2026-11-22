@@ -145,7 +145,7 @@ export async function addSet(
       gymId: session.gymId,
       catalogId: item.catalogId,
       gymExerciseId: item.gymExerciseId,
-      order: existing.length + 1,
+      order: existing.reduce((m, x) => Math.max(m, x.order), 0) + 1,
       weight,
       reps,
       baseWeight: loading.type === 'plate' || loading.type === 'plates' ? loading.base : null,
@@ -257,11 +257,19 @@ export function prefill(
  * Earlier sessions' sets to compare this session's records against: the same machine for machine exercises
  * (machines differ between gyms), the same exercise at any gym otherwise.
  */
-export async function recordHistory(item: PickerItem, byMachine: boolean, excludeSessionId: string): Promise<SetEntry[]> {
-  const sets =
-    byMachine && item.gymExerciseId
-      ? await db.sets.where('gymExerciseId').equals(item.gymExerciseId).toArray()
-      : await db.sets.where('catalogId').equals(item.catalogId).toArray();
+export async function recordHistory(
+  item: PickerItem,
+  byMachine: boolean,
+  excludeSessionId: string,
+  gymId: string,
+): Promise<SetEntry[]> {
+  let sets: SetEntry[];
+  if (byMachine && item.gymExerciseId) sets = await db.sets.where('gymExerciseId').equals(item.gymExerciseId).toArray();
+  else {
+    sets = await db.sets.where('catalogId').equals(item.catalogId).toArray();
+    // A machine not set up at this gym has no identity: only the same gym's un-set-up sets are the same machine.
+    if (byMachine) sets = sets.filter((s) => s.gymId === gymId && !s.gymExerciseId);
+  }
   return sets.filter((s) => s.sessionId !== excludeSessionId);
 }
 

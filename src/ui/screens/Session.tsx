@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState, type MutableRefObject } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../../db/db';
 import { getCatalog } from '../../db/catalogRepo';
@@ -25,31 +25,74 @@ function formatElapsed(ms: number): string {
   return `${Math.floor(min / 60)} h ${String(min % 60).padStart(2, '0')} min`;
 }
 
-/** Optional body weight for the session: saved on Enter or when the field loses focus; emptying it clears it. */
-function BodyweightField({ sessionId, saved, previous }: { sessionId: string; saved: number | null; previous: number | null }) {
+/**
+ * Optional body weight for the session: saved on Enter, when the field loses focus, when the screen is left or
+ * `flush` is called (iOS Safari does not blur on a button tap); emptying it clears it.
+ */
+function BodyweightField({
+  sessionId,
+  saved,
+  previous,
+  flush,
+}: {
+  sessionId: string;
+  saved: number | null;
+  previous: number | null;
+  flush: MutableRefObject<() => Promise<void>>;
+}) {
   const show = (kg: number | null) => (kg === null ? '' : formatWeight(kg));
   const [text, setText] = useState(() => show(saved));
   const [error, setError] = useState<string | null>(null);
+  const textRef = useRef(text);
+  const savedRef = useRef(saved);
+  const mounted = useRef(true);
+  savedRef.current = saved;
 
+  function edit(value: string) {
+    textRef.current = value;
+    setText(value);
+  }
+
+  /** Saves the typed value if it is valid and changed; an invalid one reverts the field to the saved weight. */
   async function commit() {
-    const kg = text.trim() === '' ? null : parseWeightInput(text);
-    if (kg !== null && !(kg > 0 && kg < 500)) {
-      setText(show(saved));
+    const raw = textRef.current;
+    const kg = raw.trim() === '' ? null : parseWeightInput(raw);
+    if (kg === null && raw.trim() !== '') {
+      if (mounted.current) edit(show(savedRef.current));
       return;
     }
-    if (kg === saved) {
-      setText(show(saved));
+    if (kg !== null && !(kg > 0 && kg < 500)) {
+      if (mounted.current) edit(show(savedRef.current));
+      return;
+    }
+    if (kg === savedRef.current) {
+      if (mounted.current) edit(show(savedRef.current));
       return;
     }
     try {
       await setSessionBodyweight(sessionId, kg);
-      setText(show(kg));
-      setError(null);
+      savedRef.current = kg;
+      if (mounted.current) {
+        edit(show(kg));
+        setError(null);
+      }
     } catch (e) {
+      if (!mounted.current) return;
       if (e instanceof SessionEndedError) navigate({ name: 'home' });
       else setError(oneLine(e));
     }
   }
+
+  const commitRef = useRef(commit);
+  commitRef.current = commit;
+  flush.current = () => commitRef.current();
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      void commitRef.current();
+    };
+  }, []);
 
   return (
     <>
@@ -60,7 +103,7 @@ function BodyweightField({ sessionId, saved, previous }: { sessionId: string; sa
           aria-label="Body weight, kg"
           placeholder={previous === null ? '' : formatWeight(previous)}
           value={text}
-          onChange={(e) => setText(e.target.value)}
+          onChange={(e) => edit(e.target.value)}
           onBlur={() => void commit()}
           onKeyDown={(e) => {
             if (e.key === 'Enter') e.currentTarget.blur();
@@ -108,6 +151,7 @@ export default function Session({ sessionId }: { sessionId: string }) {
   }, []);
 
   const [removing, setRemoving] = useState<string | null>(null);
+  const flushBodyweight = useRef<() => Promise<void>>(async () => {});
 
   useEffect(() => {
     if (data === null) navigate({ name: 'home' });
@@ -124,6 +168,7 @@ export default function Session({ sessionId }: { sessionId: string }) {
   const removingCard = cards.find((c) => c.key === removing);
 
   async function finish() {
+    await flushBodyweight.current();
     await finishSession(sessionId, Date.now());
     navigate({ name: 'home' });
   }
@@ -137,7 +182,7 @@ export default function Session({ sessionId }: { sessionId: string }) {
       </TopBar>
       <div className="session-meta">
         <p className="hint left">{`Started ${formatTime(session.startedAt)} · ${formatElapsed(now - session.startedAt)}`}</p>
-        <BodyweightField sessionId={sessionId} saved={session.bodyweight ?? null} previous={previousBodyweight} />
+        <BodyweightField sessionId={sessionId} saved={session.bodyweight ?? null} previous={previousBodyweight} flush={flushBodyweight} />
       </div>
 
       <ul className="list session-cards">

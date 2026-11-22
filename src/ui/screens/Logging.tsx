@@ -209,7 +209,7 @@ export default function Logging({ sessionId, itemKey }: { sessionId: string; ite
     // Records are e1RM records, which mean nothing for bodyweight reps or assist weight.
     const kind = catalog.find((c) => c.id === item.catalogId)?.kind;
     const history =
-      kind === 'bodyweight' || item.assisted ? [] : await recordHistory(item, kind === 'machine', sessionId);
+      kind === 'bodyweight' || item.assisted ? [] : await recordHistory(item, kind === 'machine', sessionId, session.gymId);
     return { status: 'ready', item, sets, last, lastGymName: lastGym?.name ?? '', history };
   }, [sessionId, itemKey]);
 

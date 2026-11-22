@@ -16,6 +16,7 @@ import {
   getOpenSession,
   lastBodyweight,
   prefill,
+  recordHistory,
   recomputePlateHistory,
   sessionExercises,
   setSessionBodyweight,
@@ -216,6 +217,35 @@ describe('sets', () => {
     expect(y.order).toBe(2);
     expect((await setsForItem(s.id, f)).map((r) => r.id)).toEqual([x.id, y.id]);
     expect((await setsForItem(s.id, item)).length).toBe(1);
+  });
+
+  test('addSet after a delete never reuses an order', async () => {
+    const s = await startSession(g.id, T0);
+    await addSet(s.id, item, 62, 10, T0 + 1);
+    const b = await addSet(s.id, item, 62, 10, T0 + 2);
+    await addSet(s.id, item, 62, 10, T0 + 3);
+    await deleteSet(b.id, T0 + 4);
+    const d = await addSet(s.id, item, 62, 10, T0 + 5);
+    expect(d.order).toBe(4);
+    expect((await setsForItem(s.id, item)).map((r) => r.order)).toEqual([1, 3, 4]);
+  });
+
+  test('recordHistory for a machine not set up at this gym compares only un-set-up sets of the same gym', async () => {
+    const other = await addGym('Away');
+    const f = { ...item, gymExerciseId: null, key: 'c:' + item.catalogId };
+    const mk = async (gymId: string, gymExerciseId: string | null, sid: string) => {
+      await db.sessions.add({ id: sid, gymId, startedAt: T0, endedAt: T0 + 1, lastActivityAt: T0 });
+      await db.sets.add({
+        id: crypto.randomUUID(), sessionId: sid, gymId, catalogId: item.catalogId, gymExerciseId, order: 1,
+        weight: 10, reps: 5, baseWeight: null, unit: 'kg', completedAt: T0,
+      });
+    };
+    await mk(g.id, null, 'same-gym-bare');
+    await mk(other.id, null, 'other-gym-bare');
+    await mk(g.id, item.gymExerciseId, 'same-gym-setup');
+    const hist = await recordHistory(f, true, 'cur', g.id);
+    expect(hist.map((x) => x.sessionId)).toEqual(['same-gym-bare']);
+    expect((await recordHistory(f, false, 'cur', g.id)).length).toBe(3);
   });
 
   test('updateSet patches and bumps lastActivityAt; deleteSet removes and bumps', async () => {

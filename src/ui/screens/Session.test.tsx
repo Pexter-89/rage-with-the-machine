@@ -146,3 +146,37 @@ test('body weight: nonsense is dropped, and the last noted weight is the placeho
   await vi.waitFor(() => expect(field).toHaveValue(''));
   expect((await db.sessions.get(s.id))?.bodyweight).toBeUndefined();
 });
+
+test('body weight: a malformed entry reverts the field and keeps the saved weight', async () => {
+  const user = userEvent.setup();
+  const { s } = await seed();
+  await db.sessions.update(s.id, { bodyweight: 80 });
+  render(<Session sessionId={s.id} />);
+  const field = await screen.findByRole('textbox', { name: 'Body weight, kg' });
+  expect(field).toHaveValue('80');
+  await user.clear(field);
+  await user.type(field, '82kg');
+  await user.tab();
+  await vi.waitFor(() => expect(field).toHaveValue('80'));
+  expect((await db.sessions.get(s.id))?.bodyweight).toBe(80);
+});
+
+test('body weight typed but not blurred is saved on Finish and when the screen unmounts', async () => {
+  const user = userEvent.setup();
+  const { g, s } = await seed();
+  await addSets(s.id, g.id, null, [[60, 10]]);
+  const view = render(<Session sessionId={s.id} />);
+  const field = await screen.findByRole('textbox', { name: 'Body weight, kg' });
+  await user.type(field, '81');
+  view.unmount();
+  await vi.waitFor(async () => expect((await db.sessions.get(s.id))?.bodyweight).toBe(81));
+
+  const again = render(<Session sessionId={s.id} />);
+  const field2 = await screen.findByRole('textbox', { name: 'Body weight, kg' });
+  await user.clear(field2);
+  await user.type(field2, '79');
+  await user.pointer({ target: screen.getByRole('button', { name: 'Finish session' }), keys: '[MouseLeft]' });
+  await vi.waitFor(async () => expect((await db.sessions.get(s.id))?.endedAt).not.toBeNull());
+  expect((await db.sessions.get(s.id))?.bodyweight).toBe(79);
+  again.unmount();
+});
