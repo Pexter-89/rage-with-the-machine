@@ -23,7 +23,15 @@ createServer(async (req, res) => {
     return;
   }
   try {
-    const body = await readFile(file);
+    let body = await readFile(file);
+    // index.html is page content only (claude.ai adds the skeleton at publish); add one here too.
+    if (extname(file) === '.html' && !/^\s*<!doctype/i.test(body.toString())) {
+      body = Buffer.from(
+        '<!doctype html><html lang="en"><head><meta charset="utf-8">' +
+          '<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">' +
+          '<style>body{margin:0}</style></head><body>' + body + '</body></html>',
+      );
+    }
     res.writeHead(200, { 'content-type': types[extname(file)] ?? 'application/octet-stream', 'cache-control': 'no-store' });
     res.end(body);
   } catch {

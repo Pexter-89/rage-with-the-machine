@@ -1,13 +1,11 @@
-<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <title>Rage with the machine</title>
-    <link rel="stylesheet" href="styles.css" />
-  </head>
-  <body>
-    <div id="root"></div>
+<!--
+  Page content only: claude.ai wraps this file in its own document skeleton (doctype, head, body) when the
+  artifact is published (charset + viewport meta included), so it has no html, head or body tags of its own.
+  scripts/serve.js adds the same kind of skeleton for local runs.
+-->
+<title>Rage with the machine</title>
+<link rel="stylesheet" href="styles.css" />
+<div id="root"></div>
 
     <!--
       Libraries come from cdn.jsdelivr.net, pinned to exact versions (the same as package-lock.json, which the
@@ -29,5 +27,3 @@
       }
     </script>
     <script type="module" src="js/main.js"></script>
-  </body>
-</html>
