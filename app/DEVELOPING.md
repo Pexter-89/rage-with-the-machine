@@ -85,3 +85,7 @@ The repo (fork branch) holds `app/` plus `test/`, `vitest.config.js` and `packag
 - To publish from the repo: publish `app/index.html` with every other file in `app/` as supporting files at
   the same relative paths, to the same artifact URL.
 - Local run: `npm run serve` (serves `app/` at http://localhost:8080; outside claude.ai it uses local IndexedDB).
+
+## Known items for later
+
+- **Set documents.** Each set is its own doc in `sets` (~1,250 a year at 3 sessions × 8 sets a week). The app loads every collection at startup, and the db guidance is "hundreds to low thousands" of docs per queried collection. If startup slows (likely after 2–3 years), store each session's sets inside its `sessions/<id>` doc — change only the cloud mapping in `js/db/cloudSync.js` (and the skills' doc shapes); keep Dexie rows as they are so the fork stays close to `main` and backups stay compatible. Hard cap is 25,000 docs.
