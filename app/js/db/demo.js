@@ -3,7 +3,7 @@ import { wheelValues, snapToWheel } from '../domain/loading.js';
 import { db } from './db.js';
 
 /**
- * Demo data: two gyms with about five months of made-up training, for exploring the Progress screen.
+ * Demo data: two gyms with about five months of made-up training and two programs, for exploring the app.
  * Every row's id starts with `demo-`, so it can be removed again without touching real data.
  */
 export const DEMO_PREFIX = 'demo-';
@@ -98,6 +98,23 @@ const DAY_HOME = [
   { key: 'band-pull-apart', start: 2, perWeek: 0.1, reps: [15, 20], sets: 2 },
 ];
 
+/** The City gym's two days as programs; their sessions are logged as started from them. */
+const DEMO_PROGRAMS = [
+  { id: 'demo-p-a', name: 'Demo · Day A', days: DAY_A },
+  { id: 'demo-p-b', name: 'Demo · Day B', days: DAY_B },
+];
+
+/**
+ * @param {Plan[]} days
+ * @returns {ProgramItem[]}
+ */
+const programItems = (days) =>
+  days.map((p) => ({
+    catalogId: MACHINES.find((m) => m.id === p.key)?.catalogId ?? p.key,
+    sets: p.sets,
+    reps: p.reps[1],
+  }));
+
 /**
  * True when the demo gyms are in the database.
  * @returns {Promise<boolean>}
@@ -170,13 +187,33 @@ export async function addDemoData(now) {
         }
         t += 60_000;
       }
-      sessions.push({ id: sessionId, gymId, startedAt: begin, endedAt: t + 5 * 60_000, lastActivityAt: t });
+      const program = DEMO_PROGRAMS.find((d) => d.days === plan);
+      sessions.push({
+        id: sessionId,
+        gymId,
+        startedAt: begin,
+        endedAt: t + 5 * 60_000,
+        lastActivityAt: t,
+        ...(program ? { programId: program.id, plan: programItems(program.days) } : {}),
+      });
     }
   }
 
-  await db.transaction('rw', [db.gyms, db.gymExercises, db.sessions, db.sets], async () => {
+  await db.transaction('rw', [db.gyms, db.gymExercises, db.sessions, db.sets, db.programs], async () => {
     await removeDemoRows();
     const order = (await db.gyms.toArray()).reduce((m, g) => Math.max(m, g.order), -1) + 1;
+    const programOrder = (await db.programs.toArray()).reduce((m, p) => Math.max(m, p.order), -1) + 1;
+    await db.programs.bulkAdd(
+      DEMO_PROGRAMS.map((d, i) => ({
+        id: d.id,
+        name: d.name,
+        order: programOrder + i,
+        archived: false,
+        items: programItems(d.days),
+        createdAt: now,
+        updatedAt: now,
+      })),
+    );
     const gyms = [
       { id: CITY, name: 'Demo · City Gym', order, archived: false },
       { id: HOME, name: 'Demo · Home Gym', order: order + 1, archived: false },
@@ -195,12 +232,14 @@ async function removeDemoRows() {
   await db.sessions.where('gymId').startsWith(DEMO_PREFIX).delete();
   await db.gymExercises.where('gymId').startsWith(DEMO_PREFIX).delete();
   await db.gyms.where('id').startsWith(DEMO_PREFIX).delete();
+  await db.programs.where('id').startsWith(DEMO_PREFIX).delete();
 }
 
 /**
- * Removes the demo gyms and everything logged at them, including sessions started there by hand.
+ * Removes the demo gyms, the demo programs and everything logged at the demo gyms, including sessions started
+ * there by hand.
  * @returns {Promise<void>}
  */
 export async function removeDemoData() {
-  await db.transaction('rw', [db.gyms, db.gymExercises, db.sessions, db.sets], removeDemoRows);
+  await db.transaction('rw', [db.gyms, db.gymExercises, db.sessions, db.sets, db.programs], removeDemoRows);
 }

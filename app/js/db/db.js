@@ -5,11 +5,12 @@ import Dexie from 'dexie';
 /** @typedef {import('../domain/types.js').GymExercise} GymExercise */
 /** @typedef {import('../domain/types.js').Session} Session */
 /** @typedef {import('../domain/types.js').SetEntry} SetEntry */
+/** @typedef {import('../domain/types.js').Program} Program */
 
 /**
  * The local working store. Dexie adds one property per table declared in `stores()` below:
  * `gyms` (Gym), `customCatalog` (CatalogExercise), `gymExercises` (GymExercise), `sessions` (Session),
- * `sets` (SetEntry) and `kv` ({ key, value }: settings and other small values).
+ * `sets` (SetEntry), `kv` ({ key, value }: settings and other small values) and `programs` (Program).
  * Every table mirrors a collection of the artifact db (see cloudSync.js).
  */
 export class RwtmDB extends Dexie {
@@ -30,6 +31,16 @@ export class RwtmDB extends Dexie {
       sessions: 'id,gymId,startedAt,endedAt',
       sets: 'id,sessionId,catalogId,gymId,gymExerciseId,completedAt',
       kv: 'key',
+    });
+    // Version 2: gym programs (items embedded, so one program is one row and one cloud document).
+    this.version(2).stores({
+      gyms: 'id,order',
+      customCatalog: 'id',
+      gymExercises: 'id,gymId,catalogId',
+      sessions: 'id,gymId,startedAt,endedAt',
+      sets: 'id,sessionId,catalogId,gymId,gymExerciseId,completedAt',
+      kv: 'key',
+      programs: 'id,order',
     });
   }
 }

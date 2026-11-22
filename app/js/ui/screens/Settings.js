@@ -353,7 +353,7 @@ export default function Settings() {
           `
           }
           <p className="hint">
-            Two demo gyms with five months of made-up workouts, to try out Progress. Your own data is not touched.
+            Two demo gyms with five months of made-up workouts and two programs, to try out Progress and programs. Your own data is not touched.
           </p>
         </li>
       </ul>
@@ -364,7 +364,7 @@ export default function Settings() {
 
       <${ConfirmSheet}
         title="Remove demo data?"
-        message=${confirmDemo ? 'The demo gyms and everything logged at them will be deleted.' : null}
+        message=${confirmDemo ? 'The demo gyms, the demo programs and everything logged at the demo gyms will be deleted.' : null}
         confirmLabel="Remove"
         onConfirm=${async () => {
           await removeDemoData();

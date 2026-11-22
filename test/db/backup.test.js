@@ -59,6 +59,19 @@ async function seed() {
   await updateSettings({ theme: 'dark', autoCloseMinutes: 45 });
 }
 
+const PROGRAM = {
+  id: 'p1',
+  name: 'Legs',
+  order: 0,
+  archived: false,
+  items: [
+    { catalogId: 'leg-press', sets: 3, reps: 10 },
+    { catalogId: 'pull-up', sets: 3, reps: 8 },
+  ],
+  createdAt: T,
+  updatedAt: T,
+};
+
 describe('backup', () => {
   test('backup round-trips losslessly', async () => {
     await seed();
@@ -70,6 +83,33 @@ describe('backup', () => {
     await restoreBackup(b);
     expect(await exportBackup(T)).toEqual(b);
     expect((await getSettings()).theme).toBe('dark');
+  });
+
+  test('programs and session plans round-trip', async () => {
+    await seed();
+    await db.programs.add(PROGRAM);
+    await db.sessions.update('s1', { programId: 'p1', plan: PROGRAM.items });
+    const b = await exportBackup(T);
+    expect(b.data.programs).toEqual([PROGRAM]);
+    expect(b.version).toBe(1);
+    await resetDb();
+    await restoreBackup(JSON.parse(JSON.stringify(b)));
+    expect(await db.programs.toArray()).toEqual([PROGRAM]);
+    expect((await db.sessions.get('s1'))?.plan).toEqual(PROGRAM.items);
+    expect(await exportBackup(T)).toEqual(b);
+  });
+
+  test('a backup from before programs (no "programs" list) is valid and restores with no programs', async () => {
+    await seed();
+    const b = await exportBackup(T);
+    const old = { ...b, data: { ...b.data } };
+    delete old.data.programs;
+    expect(validateBackup(old)).toEqual({ ok: true, file: old });
+    await db.programs.add(PROGRAM); // like every other table, the restore replaces what is there
+    await restoreBackup(old);
+    expect(await db.programs.count()).toBe(0);
+    expect(await db.gyms.count()).toBe(1);
+    expect((await exportBackup(T)).data.programs).toEqual([]);
   });
 
   test('exportBackup does not touch lastBackupAt', async () => {
@@ -94,6 +134,8 @@ describe('backup', () => {
       { ...good, data: { ...good.data, gyms: {} } },
       { ...good, data: { ...good.data, settings: [] } },
       { ...good, data: { ...good.data, settings: undefined } },
+      { ...good, data: { ...good.data, programs: {} } },
+      { ...good, data: { ...good.data, programs: null } },
     ]) {
       const v = validateBackup(bad);
       expect(v.ok).toBe(false);

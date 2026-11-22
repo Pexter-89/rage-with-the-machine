@@ -15,6 +15,7 @@ import { addDemoData, removeDemoData } from '../../app/js/db/demo.js';
 import { addGym, availableExercises, renameGym, deleteGym } from '../../app/js/db/gymRepo.js';
 import { addSet, clearHistory, deleteSession, startSession, updateSet } from '../../app/js/db/sessionRepo.js';
 import { getSettings, updateSettings } from '../../app/js/db/settingsRepo.js';
+import { addProgram, deleteProgram, startProgramSession, swapPlanItem } from '../../app/js/db/programRepo.js';
 
 const T0 = 1_700_000_000_000;
 
@@ -126,6 +127,29 @@ test('local add, update and delete are written through', async () => {
   expect(cloud.get('gyms', gym.id)).toBeUndefined();
 });
 
+test('programs are mirrored like the other tables: load, write-through, remote changes, session plans', async () => {
+  const items = [{ catalogId: 'leg-press', sets: 3, reps: 10 }];
+  cloud.remoteSet('programs', 'p0', { id: 'p0', name: 'From cloud', order: 0, archived: false, items, createdAt: 1, updatedAt: 1 });
+  await connect().start();
+  expect((await db.programs.get('p0'))?.name).toBe('From cloud');
+
+  const gym = await addGym('Kamppi');
+  const p = await addProgram({ name: 'Mine', items }, T0);
+  const s = await startProgramSession(gym.id, p.id, T0, 90);
+  await swapPlanItem(s.id, 0, 'hack-squat');
+  await sync.whenIdle();
+  expect(cloud.get('programs', p.id)).toEqual({ ...p });
+  expect(cloud.get('sessions', s.id)).toMatchObject({ programId: p.id, plan: [{ catalogId: 'hack-squat', sets: 3, reps: 10 }] });
+
+  cloud.remoteSet('programs', 'p9', { id: 'p9', name: 'By Claude', order: 5, archived: false, items, createdAt: 2, updatedAt: 2 });
+  await sync.settled();
+  expect((await db.programs.get('p9'))?.name).toBe('By Claude');
+
+  await deleteProgram(p.id);
+  await sync.whenIdle();
+  expect(cloud.get('programs', p.id)).toBeUndefined();
+});
+
 test('rapid edits to one row coalesce into one write', async () => {
   await connect().start();
   const gym = await addGym('A');
@@ -185,7 +209,8 @@ test('backup import, clear history and demo data sync in bulk', async () => {
   expect(cloud.store.get('sets').size).toBe(setCount);
 
   const backup = await exportBackup(T0);
-  expect(backupDocCount(backup.data)).toBe(2 + 6 + n + setCount + backup.data.customCatalog.length + 1);
+  expect(cloud.store.get('programs').size).toBe(2);
+  expect(backupDocCount(backup.data)).toBe(2 + 6 + n + setCount + backup.data.customCatalog.length + 2 + 1);
 
   await clearHistory();
   await sync.whenIdle();
@@ -202,6 +227,7 @@ test('backup import, clear history and demo data sync in bulk', async () => {
   await sync.whenIdle();
   expect(cloud.store.get('sets').size).toBe(0);
   expect(cloud.store.get('gyms').size).toBe(0);
+  expect(cloud.store.get('programs').size).toBe(0);
 });
 
 test('failed writes stay queued, are shown, and retry', async () => {

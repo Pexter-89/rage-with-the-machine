@@ -16,7 +16,7 @@
  *   are skipped.
  */
 
-export const TABLES = ['gyms', 'customCatalog', 'gymExercises', 'sessions', 'sets', 'kv'];
+export const TABLES = ['gyms', 'customCatalog', 'gymExercises', 'sessions', 'sets', 'kv', 'programs'];
 /** @typedef {(typeof TABLES)[number]} TableName */
 
 export const PRIMARY_KEY = {
@@ -26,6 +26,7 @@ export const PRIMARY_KEY = {
   sessions: 'id',
   sets: 'id',
   kv: 'key',
+  programs: 'id',
 };
 /** The artifact database holds at most this many documents in total. */
 export const CLOUD_DOC_LIMIT = 25_000;

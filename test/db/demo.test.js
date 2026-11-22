@@ -33,9 +33,20 @@ test('demo data adds two gyms with months of ended sessions, and is removed with
   const squat = sets.filter((x) => x.catalogId === 'barbell-back-squat').sort((a, b) => a.completedAt - b.completedAt);
   expect(squat.at(-1).weight).toBeGreaterThan(squat[0].weight + 20);
 
+  // Two demo programs; the City gym's sessions were done with them.
+  const programs = await db.programs.orderBy('order').toArray();
+  expect(programs.map((p) => p.name)).toEqual(['Demo · Day A', 'Demo · Day B']);
+  expect(programs[0].items[0]).toEqual({ catalogId: 'barbell-back-squat', sets: 4, reps: 8 });
+  expect(programs[0].items[1].catalogId).toBe('leg-press');
+  const withPlan = sessions.filter((x) => x.programId);
+  expect(withPlan.length).toBeGreaterThan(20);
+  expect(withPlan.every((x) => x.gymId === 'demo-gym-city' && x.plan.length > 0)).toBe(true);
+  await db.programs.add({ id: 'mine', name: 'Mine', order: 9, archived: false, items: [], createdAt: 0, updatedAt: 0 });
+
   // Loading again replaces rather than duplicates.
   await addDemoData(NOW);
   expect(await db.sessions.count()).toBe(n + 1);
+  expect(await db.programs.count()).toBe(3);
 
   await removeDemoData();
   expect(await hasDemoData()).toBe(false);
@@ -43,4 +54,5 @@ test('demo data adds two gyms with months of ended sessions, and is removed with
   expect(await db.sessions.count()).toBe(1);
   expect(await db.sets.count()).toBe(1);
   expect(await db.gymExercises.where('gymId').startsWith('demo-').count()).toBe(0);
+  expect((await db.programs.toArray()).map((p) => p.id)).toEqual(['mine']);
 }, 20_000); // thousands of rows are slow in fake-indexeddb under a full parallel run

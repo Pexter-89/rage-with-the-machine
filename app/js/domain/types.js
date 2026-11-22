@@ -59,6 +59,28 @@
  * @property {number | null} endedAt
  * @property {number} lastActivityAt
  * @property {number | null} [bodyweight] Body weight in kg, if the user noted it during the session. Absent in older data.
+ * @property {string | null} [programId] The program the session was started from. Absent in older data.
+ * @property {ProgramItem[]} [plan] Snapshot of the program's items at start (a swap edits only this). Absent in older data.
+ */
+
+/**
+ * One exercise of a program: a catalogue exercise (not a machine, so it works at any gym) with a target.
+ * @typedef {object} ProgramItem
+ * @property {string} catalogId
+ * @property {number} sets
+ * @property {number} reps
+ */
+
+/**
+ * A reusable, gym-independent list of exercises. No weights: logging prefills them from last time.
+ * @typedef {object} Program
+ * @property {string} id
+ * @property {string} name
+ * @property {number} order
+ * @property {boolean} archived
+ * @property {ProgramItem[]} items
+ * @property {number} createdAt
+ * @property {number} updatedAt
  */
 
 /**

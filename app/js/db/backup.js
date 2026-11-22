@@ -8,10 +8,13 @@ import { getSettings } from './settingsRepo.js';
  * @property {'rwtm-backup'} format
  * @property {1} version
  * @property {number} exportedAt
- * @property {{ gyms: Gym[], customCatalog: CatalogExercise[], gymExercises: GymExercise[], sessions: Session[], sets: SetEntry[], settings: Settings }} data
+ * @property {{ gyms: Gym[], customCatalog: CatalogExercise[], gymExercises: GymExercise[], sessions: Session[], sets: SetEntry[], programs?: Program[], settings: Settings }} data
+ *   `programs` is absent in backups from before programs; such a backup restores with no programs.
  */
 
 const TABLE_KEYS = ['gyms', 'customCatalog', 'gymExercises', 'sessions', 'sets'];
+/** Lists added after the first backups: optional when reading, always written. */
+const OPTIONAL_KEYS = ['programs'];
 const SETTINGS_KEY = 'settings';
 
 /**
@@ -19,7 +22,7 @@ const SETTINGS_KEY = 'settings';
  * @returns {Promise<BackupFile>}
  */
 export async function exportBackup(now) {
-  return db.transaction('r', [db.gyms, db.customCatalog, db.gymExercises, db.sessions, db.sets, db.kv], async () => ({
+  return db.transaction('r', [db.gyms, db.customCatalog, db.gymExercises, db.sessions, db.sets, db.programs, db.kv], async () => ({
     format: 'rwtm-backup',
     version: 1,
     exportedAt: now,
@@ -29,6 +32,7 @@ export async function exportBackup(now) {
       gymExercises: await db.gymExercises.toArray(),
       sessions: await db.sessions.toArray(),
       sets: await db.sets.toArray(),
+      programs: await db.programs.toArray(),
       settings: await getSettings(),
     },
   }));
@@ -53,24 +57,31 @@ export function validateBackup(json) {
   for (const key of TABLE_KEYS) {
     if (!Array.isArray(data[key])) return { ok: false, error: `Backup is missing the "${key}" list.` };
   }
+  for (const key of OPTIONAL_KEYS) {
+    if (data[key] !== undefined && !Array.isArray(data[key]))
+      return { ok: false, error: `Backup's "${key}" is not a list.` };
+  }
   if (!isObject(data.settings)) return { ok: false, error: 'Backup is missing its settings.' };
   return { ok: true, file: json };
 }
 
 /**
- * One transaction: clear every table, then add. Any failure aborts and keeps the previous data.
+ * One transaction: clear every table, then add. Any failure aborts and keeps the previous data. A backup
+ * without `programs` (older than programs) leaves no programs, as it does for every other table.
  * @param {BackupFile} file
  * @returns {Promise<void>}
  */
 export async function restoreBackup(file) {
   const { data } = file;
-  await db.transaction('rw', [db.gyms, db.customCatalog, db.gymExercises, db.sessions, db.sets, db.kv], async () => {
-    await Promise.all([db.gyms, db.customCatalog, db.gymExercises, db.sessions, db.sets, db.kv].map((t) => t.clear()));
+  const tables = [db.gyms, db.customCatalog, db.gymExercises, db.sessions, db.sets, db.programs, db.kv];
+  await db.transaction('rw', tables, async () => {
+    await Promise.all(tables.map((t) => t.clear()));
     await db.gyms.bulkAdd(data.gyms);
     await db.customCatalog.bulkAdd(data.customCatalog);
     await db.gymExercises.bulkAdd(data.gymExercises);
     await db.sessions.bulkAdd(data.sessions);
     await db.sets.bulkAdd(data.sets);
+    await db.programs.bulkAdd(data.programs ?? []);
     await db.kv.put({ key: SETTINGS_KEY, value: data.settings });
   });
 }

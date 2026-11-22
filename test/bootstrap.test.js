@@ -112,7 +112,7 @@ test('closeOnVersionChange closes the connection and reloads so another tab can 
   const reload = vi.fn();
   closeOnVersionChange(db, reload);
   const upgrader = new Dexie('rwtm');
-  upgrader.version(2).stores({ kv: 'key' });
+  upgrader.version(3).stores({ kv: 'key' }); // one above the app's current schema
   try {
     await upgrader.open();
     expect(reload).toHaveBeenCalledTimes(1);
