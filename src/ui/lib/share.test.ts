@@ -55,3 +55,21 @@ test('shareOrDownload falls back to download when share is NotAllowedError', asy
   expect(await shareOrDownload('x.csv', new Blob(['a']))).toBe(true);
   expect(click).toHaveBeenCalledTimes(1);
 });
+
+test('shareOrDownload saves through the Claude downloads capability when it is available', async () => {
+  const save = vi.fn().mockResolvedValue({ status: 'saved' });
+  const share = vi.fn();
+  vi.stubGlobal('navigator', { canShare: () => true, share });
+  await expect(shareOrDownload('x.json', new Blob(['{}']), async () => ({ save }))).resolves.toBe(true);
+  expect(save).toHaveBeenCalledWith({ filename: 'x.json', data: expect.any(Blob) });
+  expect(share).not.toHaveBeenCalled();
+});
+
+test('shareOrDownload: a declined save is a cancel, an unavailable one falls back, others reject', async () => {
+  const reject = (code: string) => async () => ({ save: vi.fn().mockRejectedValue({ code, message: `m-${code}` }) });
+  vi.stubGlobal('navigator', { canShare: () => true, share: vi.fn().mockResolvedValue(undefined) });
+  await expect(shareOrDownload('x.json', new Blob(['{}']), reject('declined'))).resolves.toBe(false);
+  await expect(shareOrDownload('x.json', new Blob(['{}']), reject('unavailable'))).resolves.toBe(true);
+  expect(navigator.share).toHaveBeenCalledTimes(1);
+  await expect(shareOrDownload('x.json', new Blob(['{}']), reject('rejected_extension'))).rejects.toThrow('m-rejected_extension');
+});

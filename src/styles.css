@@ -25,6 +25,22 @@
   color-scheme: light;
 }
 
+/* Before the app sets data-theme (or in a page without JS), follow the system setting. */
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme]) {
+    --bg: #f4f5f7;
+    --surface: #e4e6eb;
+    --text: #1b1d22;
+    --muted: #5b616c;
+    --accent: #2563d6;
+    --accent-text: #ffffff;
+    --ok: #1a8a47;
+    --danger: #c9302c;
+    --hl: #e8590c;
+    color-scheme: light;
+  }
+}
+
 * {
   box-sizing: border-box;
 }
@@ -1050,4 +1066,32 @@ textarea {
 
 .hint.left {
   text-align: left;
+}
+
+/* Artifact build: startup and cloud-sync notices. */
+.boot-screen {
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+}
+
+.sync-banner {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 12px;
+  background: var(--surface);
+  color: var(--text);
+  border-bottom: 2px solid var(--danger);
+  font-size: 0.9rem;
+}
+
+.sync-banner .btn {
+  min-height: 36px;
+  padding: 4px 14px;
 }

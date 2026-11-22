@@ -9,6 +9,8 @@ import { setsToCsv } from '../../domain/csv';
 import { buildClaudePrompt } from '../../domain/claudePrompt';
 import type { Settings as SettingsData } from '../../domain/types';
 import { readFileText, shareOrDownload } from '../lib/share';
+import { askConfirm } from '../lib/confirm';
+import { activeCloudSync, backupDocCount, CLOUD_DOC_LIMIT } from '../../db/cloudSync';
 import ConfirmSheet from '../components/ConfirmSheet';
 import TopBar from '../components/TopBar';
 
@@ -104,7 +106,11 @@ export default function Settings() {
       setMessage({ text: result.error, error: true });
       return;
     }
-    if (!window.confirm('Replace all data with this backup?')) return;
+    if (activeCloudSync() && backupDocCount(result.file.data as unknown as Record<string, unknown>) > CLOUD_DOC_LIMIT) {
+      setMessage({ text: `This backup has more than ${CLOUD_DOC_LIMIT} rows, more than cloud storage holds`, error: true });
+      return;
+    }
+    if (!(await askConfirm('Replace all data with this backup?', 'Replace'))) return;
     try {
       await restoreBackup(result.file);
     } catch (e) {

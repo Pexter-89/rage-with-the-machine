@@ -10,6 +10,7 @@ import { formatWeight } from '../../domain/metrics';
 import type { CatalogExercise, Category, GymExercise, Loading } from '../../domain/types';
 import TopBar from '../components/TopBar';
 import { navigate, type Route } from '../router';
+import { askConfirm } from '../lib/confirm';
 
 interface Props {
   gymId: string;
@@ -279,7 +280,7 @@ export default function ExerciseEdit({ gymId, geId, catalogId }: Props) {
         l?.type === 'plate' || l?.type === 'plates';
       if (existing && plateLike(old) && plateLike(loading) && old.base !== loading.base) {
         const n = (await db.sets.where('gymExerciseId').equals(existing.id).toArray()).filter((s) => s.baseWeight === old.base).length;
-        if (n > 0 && window.confirm(`Recompute ${n} past sets for the new sled weight?`)) {
+        if (n > 0 && (await askConfirm(`Recompute ${n} past sets for the new sled weight?`, 'Recompute'))) {
           await recomputePlateHistory(existing.id, old.base, loading.base);
         }
       }
