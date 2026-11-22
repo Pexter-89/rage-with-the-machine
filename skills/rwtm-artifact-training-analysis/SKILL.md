@@ -7,8 +7,8 @@ description: Use when the user asks about their training, progress, PRs, plateau
 
 The user's workout tracker runs as a Claude artifact; all data lives in the artifact's database. Read it, compute with the app's formulas, answer. **Read-only: never write, update or delete anything in this skill.**
 
-Artifact URL: `{{ARTIFACT_URL}}`
-If that still reads `{{ARTIFACT_URL}}` (not replaced) and the user has not given a claude.ai artifact link, ask for it first.
+Artifact URL: `https://claude.ai/artifact/1hz2hEAuUHzNTyBzoud7pc`
+If that still reads `https://claude.ai/artifact/1hz2hEAuUHzNTyBzoud7pc` (not replaced) and the user has not given a claude.ai artifact link, ask for it first.
 
 ## Reading the data
 

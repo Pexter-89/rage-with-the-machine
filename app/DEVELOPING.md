@@ -76,6 +76,16 @@ change shape, a migration that rewrites them.
   version (react-dom's build imports `/npm/react@<version>/+esm`, the URL `react` maps to).
 - Comments explain why; JSDoc types where they help a reader.
 
+## The published artifact
+
+- Link: https://claude.ai/artifact/1hz2hEAuUHzNTyBzoud7pc. Always republish to this link (from another
+  conversation pass it as `url`); a new link means a new, empty database.
+- Capabilities declared at first publish (omit `capabilities` on republish to keep them):
+  `{db:{rules:[{path:<each of gyms, customCatalog, gymExercises, sessions, sets, kv>, read:"admin", write:"admin"}]}, user:{}, downloads:true}`.
+  Adding a collection means restating the full declaration with a rule for it.
+- `index.html` is page content only: claude.ai adds the doctype/head/body skeleton at publish.
+- The data lives in the artifact's database, not in the page, so republishing never touches it.
+
 ## Syncing with GitHub
 
 The repo (fork branch) holds `app/` plus `test/`, `vitest.config.js` and `package.json`.

@@ -7,8 +7,8 @@ description: Use when the user sends photos of gym machines (or describes equipm
 
 The user's workout tracker runs as a Claude artifact. Its data lives in the artifact's database. You add gym equipment by writing documents there directly; no file import.
 
-Artifact URL: `{{ARTIFACT_URL}}`
-If that still reads `{{ARTIFACT_URL}}` (not replaced) and the user has not given a claude.ai artifact link, ask for it before anything else.
+Artifact URL: `https://claude.ai/artifact/1hz2hEAuUHzNTyBzoud7pc`
+If that still reads `https://claude.ai/artifact/1hz2hEAuUHzNTyBzoud7pc` (not replaced) and the user has not given a claude.ai artifact link, ask for it before anything else.
 
 ## Database tool
 
