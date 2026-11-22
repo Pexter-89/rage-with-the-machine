@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Rage with the machine</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div id="root"></div>
+
+    <!--
+      Libraries come from cdn.jsdelivr.net, pinned to exact versions (the same as package-lock.json, which the
+      tests use). React must load exactly once: react-dom's /+esm build imports "/npm/react@19.3.1/+esm",
+      which is the very URL "react" maps to below, so both share one module. Change react and react-dom
+      together, and check that the react-dom build still imports the same react URL.
+      fake-indexeddb is only fetched when the frame refuses IndexedDB (see js/main.js).
+    -->
+    <script type="importmap">
+      {
+        "imports": {
+          "react": "https://cdn.jsdelivr.net/npm/react@19.3.1/+esm",
+          "react-dom/client": "https://cdn.jsdelivr.net/npm/react-dom@19.3.1/client/+esm",
+          "dexie": "https://cdn.jsdelivr.net/npm/dexie@4.4.6/+esm",
+          "chart.js": "https://cdn.jsdelivr.net/npm/chart.js@4.5.1/+esm",
+          "htm": "https://cdn.jsdelivr.net/npm/htm@3.1.1/+esm",
+          "fake-indexeddb": "https://cdn.jsdelivr.net/npm/fake-indexeddb@6.2.8/+esm"
+        }
+      }
+    </script>
+    <script type="module" src="js/main.js"></script>
+  </body>
+</html>
