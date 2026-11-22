@@ -1,8 +1,8 @@
 # Claude skills for the artifact build
 
-Two skills for the Claude artifact version of Rage With The Machine (`npm run build:artifact`). Both work on the
+Two skills for the Claude artifact version of Rage With The Machine (the buildless `app/` folder). Both work on the
 artifact's `db` capability directly (collections `gyms`, `customCatalog`, `gymExercises`, `sessions`, `sets`, `kv`;
-see the "Claude artifact build" section of the main README).
+document shapes in `app/DEVELOPING.md`).
 
 | Skill | What it does |
 | --- | --- |

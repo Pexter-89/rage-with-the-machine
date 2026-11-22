@@ -1,15 +1,15 @@
 # Rage with the machine
 
-A single-user, offline-first gym logging app (PWA). Log sets and sessions per machine, track progress with charts, and set up new gyms and machines from photos using Claude. All data stays on your phone.
+A single-user gym logging app. Log sets and sessions per machine, track progress with charts, and set up new gyms and machines from photos using Claude.
 
-## Install on your phone
+## This branch: the Claude artifact fork
 
-The URL is <https://pexter-89.github.io/rage-with-the-machine/>.
-
-- **iPhone:** open the URL in Safari, then Share, then Add to Home Screen.
-- **Android:** open the URL in Chrome, then menu, then Install app (or Add to Home screen).
-
-The URL must not change once you start logging, because your data is tied to it. Renaming the repo or the GitHub account changes the URL, and the app then starts empty (restore from a backup). The repo name also sets the base path in `.github/workflows/deploy.yml` (`BASE_PATH: /rage-with-the-machine/`), so a rename must update that too.
+This branch is a long-lived fork of the PWA on `main`. It runs as a Claude artifact on claude.ai, with the
+data stored in the artifact's database, and it has no build step: `app/` is the published artifact, file for
+file (readable ES modules, React via `htm`, libraries from cdn.jsdelivr.net through an import map), so it can
+be developed by asking Claude on claude.ai to edit and republish it. See [app/DEVELOPING.md](app/DEVELOPING.md)
+for the file map, the data layout and how to sync changes back here. The PWA, its install steps and its
+deployment live on `main`.
 
 ## Setting up a gym from photos
 
@@ -29,32 +29,15 @@ Settings, then Load demo data, adds two demo gyms with about five months of made
 
 ## Backups
 
-Data lives only on the phone. Use Settings, then Export backup, regularly, and save the file to iCloud Drive or Google Drive. Restore with Import backup. A CSV export is also available for analysis.
+The data lives in the artifact's database. Use Settings, then Export backup, now and then, and save the file to iCloud Drive or Google Drive. Restore with Import backup. A CSV export is also available for analysis.
 
 ## Development
 
 ```
 npm install
-npm run dev
-npm test
-npm run build
-npm run generate-pwa-assets
+npm test         # vitest against app/js (node_modules copies of the CDN libraries)
+npm run serve    # serves app/ at http://localhost:8080
 ```
 
-## Deploying
-
-One-time GitHub setup:
-
-1. Create a public repo named `rage-with-the-machine` under the [Pexter-89](https://github.com/Pexter-89) account.
-2. Settings, then Pages, then Source: GitHub Actions.
-3. Push `main`. The workflow in `.github/workflows/deploy.yml` tests, builds with the right base path and deploys.
-
-## Claude artifact build
-
-`npm run build:artifact` writes `dist-artifact/index.html`: one self-contained page (no service worker) to
-publish as a Claude artifact with `capabilities: {db: {rules: [{path: "", read: "admin", write: "admin"}]}, downloads: {}}`.
-In that build the data lives in the artifact's `db` (see `src/db/cloudSync.ts`): one collection per table
-(`gyms`, `customCatalog`, `gymExercises`, `sessions`, `sets`, `kv`), one document per row, document id = the
-row's `id` (`key` for `kv`), body = the row as JSON. The page loads every collection on start and replaces its
-local copy with it, writes local changes through, and applies changes made elsewhere (for example by Claude)
-while it is open. Without the capability it runs on local IndexedDB like the PWA.
+To publish, publish `app/index.html` with the rest of `app/` as supporting files at the same paths and
+`capabilities: {db: {rules: [{path: "", read: "admin", write: "admin"}]}, downloads: {}}`.
