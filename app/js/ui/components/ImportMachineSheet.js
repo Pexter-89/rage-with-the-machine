@@ -84,7 +84,6 @@ export default function ImportMachineSheet({
 }) {
   const [gymName, setGymName] = useState(null); // null: not typed, use the file's
   const [plan, setPlan] = useState(null);
-  const [text, setText] = useState('');
   const [files, setFiles] = useState([]);
   const [parsed, setParsed] = useState(null);
   const [catalog, setCatalog] = useState([]);
@@ -94,9 +93,17 @@ export default function ImportMachineSheet({
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
   const fileRef = useRef(null);
+  /** The pasted text lives only in the (uncontrolled) text area, so a long paste does not re-render the sheet. */
+  const textRef = useRef(null);
+  const pastedText = () => textRef.current?.value ?? '';
   const seq = useRef(0);
   const canPaste = typeof navigator !== 'undefined' && !!navigator.clipboard?.readText;
 
+  /**
+   * The one parse path: chosen files and pasted text are read together, as one batch.
+   * @param {string} nextText
+   * @param {{ name: string, text: string }[]} nextFiles
+   */
   async function reparse(nextText, nextFiles) {
     const mine = ++seq.current;
     setError(null);
@@ -123,7 +130,6 @@ export default function ImportMachineSheet({
   }
 
   function changeText(next) {
-    setText(next);
     void reparse(next, files);
   }
 
@@ -141,7 +147,7 @@ export default function ImportMachineSheet({
     }
     setFiles((prev) => {
       const next = [...prev.filter((p) => !read.some((r) => r.name === p.name)), ...read];
-      void reparse(text, next);
+      void reparse(pastedText(), next);
       return next;
     });
   }
@@ -149,7 +155,7 @@ export default function ImportMachineSheet({
   function removeFile(name) {
     const next = files.filter((f) => f.name !== name);
     setFiles(next);
-    void reparse(text, next);
+    void reparse(pastedText(), next);
   }
 
   useEffect(() => {
@@ -159,7 +165,9 @@ export default function ImportMachineSheet({
 
   async function pasteFromClipboard() {
     try {
-      changeText(await navigator.clipboard.readText());
+      const pasted = await navigator.clipboard.readText();
+      if (textRef.current) textRef.current.value = pasted;
+      changeText(pasted);
     } catch {
       setReadError('Could not read the clipboard; paste into the box instead');
     }
@@ -262,12 +270,15 @@ export default function ImportMachineSheet({
       `
       }
       <textarea
+        ref=${textRef}
         className="paste-area"
         aria-label="Pasted text"
-        placeholder="…or paste Claude's replies here (one or several)"
-        value=${text}
+        placeholder="…or paste Claude's replies or a gym file here (one or several)"
         onChange=${(e) => changeText(e.target.value)}
-        rows=${files.length > 0 ? 2 : 4}
+        rows=${files.length > 0 ? 3 : 5}
+        spellCheck=${false}
+        autoCapitalize="off"
+        autoCorrect="off"
       />
 
       ${

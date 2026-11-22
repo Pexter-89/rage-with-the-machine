@@ -1095,3 +1095,23 @@ textarea {
   min-height: 36px;
   padding: 4px 14px;
 }
+
+/* Paste-to-import and export text. The Claude Android app opens no file picker, so text is the way in and out. */
+.paste-box {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+}
+
+textarea.paste-area {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 100%;
+  min-height: 7.5em;
+  resize: vertical;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
+  font-size: 16px; /* under 16px, mobile browsers zoom into the field */
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}

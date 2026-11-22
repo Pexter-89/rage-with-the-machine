@@ -66,6 +66,7 @@ test('Settings navigates to #/settings, resets the boundary, and the backup cont
   await user.click(screen.getByRole('button', { name: 'Settings' }));
   expect(location.hash).toBe('#/settings');
   expect(await screen.findByRole('button', { name: 'Export backup' })).toBeEnabled();
-  expect(screen.getByRole('button', { name: 'Import backup' })).toBeEnabled();
+  expect(screen.getByRole('button', { name: 'Choose file' })).toBeEnabled();
+  expect(screen.getByRole('button', { name: 'Paste' })).toBeEnabled();
   expect(screen.getByLabelText('Backup file')).toBeInTheDocument();
 });

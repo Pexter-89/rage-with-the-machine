@@ -94,7 +94,11 @@ test('Export gym file shares the gym as a machine file with its name', async () 
   });
   render(html`<${GymDetail} gymId=${g.id} />`);
   await user.click(await screen.findByRole('button', { name: 'Export gym file' }));
+  const sheet = await screen.findByRole('dialog', { name: 'Export gym file' });
+  expect(within(sheet).getByLabelText('Export text').value).toContain('"Kamppi Gym"');
+  await user.click(within(sheet).getByRole('button', { name: 'Save file' }));
   await vi.waitFor(() => expect(shareOrDownload).toHaveBeenCalled());
+  expect(await within(sheet).findByText('Saved')).toBeInTheDocument();
   const [name, blob] = vi.mocked(shareOrDownload).mock.calls.at(-1);
   expect(name).toBe('rwtm-gym-kamppi-gym.json');
   const json = JSON.parse(await blob.text());

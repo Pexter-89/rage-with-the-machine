@@ -229,3 +229,24 @@ test('several replies pasted together are all read; a broken one is reported and
   await vi.waitFor(() => expect(onImported).toHaveBeenCalledTimes(1));
   expect((await db.gymExercises.toArray()).map((m) => m.catalogId)).toEqual(['lat-pulldown']);
 });
+
+test('a pasted gym file (plain JSON, as exported) imports its machines into the gym', async () => {
+  const user = userEvent.setup();
+  const g = await addGym('K');
+  const onImported = vi.fn();
+  render(html`<${ImportMachineSheet} gymId=${g.id} onClose=${() => {}} onImported=${onImported} />`);
+  await user.click(screen.getByLabelText('Pasted text'));
+  await user.paste(JSON.stringify({ ...FILE, gym: { name: 'Elsewhere' } }, null, 2));
+  await user.click(await screen.findByRole('button', { name: 'Import 2 machines' }));
+  await vi.waitFor(() => expect(onImported).toHaveBeenCalledTimes(1));
+  expect(await db.gymExercises.where('gymId').equals(g.id).count()).toBe(2);
+});
+
+test('pasted text that holds no machine file shows a clear error', async () => {
+  const user = userEvent.setup();
+  const g = await addGym('K');
+  render(html`<${ImportMachineSheet} gymId=${g.id} onClose=${() => {}} onImported=${() => {}} />`);
+  await user.click(screen.getByLabelText('Pasted text'));
+  await user.paste('Sorry, here is the file: {"format": "rwtm-machine", "version": 1,');
+  expect(await screen.findByRole('alert')).toHaveTextContent('No machine file found');
+});

@@ -35,47 +35,89 @@ test('theme change persists and sets data-theme', async () => {
   await vi.waitFor(() => expect(document.documentElement.dataset.theme).toBe('dark'));
 });
 
-test('export backup calls shareOrDownload with dated filename and updates last backup text to "today"', async () => {
+async function openExport(user, name) {
+  await user.click(await screen.findByRole('button', { name }));
+  return screen.findByRole('dialog', { name });
+}
+
+test('export backup opens the export sheet; Save file saves the dated file and stamps the last backup', async () => {
   const user = userEvent.setup();
   render(html`<${Settings} />`);
   expect(await screen.findByText('Last backup: never')).toBeInTheDocument();
-  await user.click(screen.getByRole('button', { name: 'Export backup' }));
+  const sheet = await openExport(user, 'Export backup');
+  expect(JSON.parse(within(sheet).getByLabelText('Export text').value).format).toBe('rwtm-backup');
+  // Opening the sheet alone is not a backup.
+  expect((await getSettings()).lastBackupAt).toBeNull();
+  await user.click(within(sheet).getByRole('button', { name: 'Save file' }));
   const d = new Date();
   const name = `rwtm-backup-${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}.json`;
   await vi.waitFor(() => expect(shareOrDownload).toHaveBeenCalledTimes(1));
   const [filename, blob] = vi.mocked(shareOrDownload).mock.calls[0];
   expect(filename).toBe(name);
   expect(blob.type).toBe('application/json');
+  expect(await within(sheet).findByText('Saved')).toBeInTheDocument();
   expect(await screen.findByText('Last backup: today')).toBeInTheDocument();
   expect((await getSettings()).lastBackupAt).not.toBeNull();
 });
 
-test('export backup failure shows inline error and does not update last backup', async () => {
+test('export backup: Copy writes the backup to the clipboard, confirms, and stamps the last backup', async () => {
   const user = userEvent.setup();
-  vi.mocked(shareOrDownload).mockRejectedValue(new Error('boom'));
   render(html`<${Settings} />`);
-  await user.click(await screen.findByRole('button', { name: 'Export backup' }));
-  expect(await screen.findByText('boom')).toBeInTheDocument();
+  const sheet = await openExport(user, 'Export backup');
+  await user.click(within(sheet).getByRole('button', { name: 'Copy' }));
+  expect(await within(sheet).findByText('Copied')).toBeInTheDocument();
+  expect(JSON.parse(await navigator.clipboard.readText()).format).toBe('rwtm-backup');
+  expect(await screen.findByText('Last backup: today')).toBeInTheDocument();
+  expect(shareOrDownload).not.toHaveBeenCalled();
+});
+
+test('export backup: a refused clipboard selects the text, asks to copy by hand, and does not stamp', async () => {
+  const user = userEvent.setup();
+  render(html`<${Settings} />`);
+  const sheet = await openExport(user, 'Export backup');
+  vi.spyOn(navigator.clipboard, 'writeText').mockRejectedValue(new Error('denied'));
+  await user.click(within(sheet).getByRole('button', { name: 'Copy' }));
+  expect(await within(sheet).findByText('Select all and copy')).toBeInTheDocument();
+  const area = within(sheet).getByLabelText('Export text');
+  expect(area.readOnly).toBe(true);
+  expect(document.activeElement).toBe(area);
+  expect(area.selectionStart).toBe(0);
+  expect(area.selectionEnd).toBe(area.value.length);
+  await new Promise((r) => setTimeout(r, 50));
   expect((await getSettings()).lastBackupAt).toBeNull();
 });
 
-test('a cancelled backup share does not stamp the last backup', async () => {
+test('export backup save failure shows inline error and does not update last backup', async () => {
+  const user = userEvent.setup();
+  vi.mocked(shareOrDownload).mockRejectedValue(new Error('boom'));
+  render(html`<${Settings} />`);
+  const sheet = await openExport(user, 'Export backup');
+  await user.click(within(sheet).getByRole('button', { name: 'Save file' }));
+  expect(await within(sheet).findByText('boom')).toBeInTheDocument();
+  expect((await getSettings()).lastBackupAt).toBeNull();
+});
+
+test('a cancelled backup save does not stamp the last backup', async () => {
   const user = userEvent.setup();
   vi.mocked(shareOrDownload).mockResolvedValue(false);
   render(html`<${Settings} />`);
-  await user.click(await screen.findByRole('button', { name: 'Export backup' }));
+  const sheet = await openExport(user, 'Export backup');
+  await user.click(within(sheet).getByRole('button', { name: 'Save file' }));
   await vi.waitFor(() => expect(shareOrDownload).toHaveBeenCalledTimes(1));
   // Let any stamping write land before checking it did not happen.
   await new Promise((r) => setTimeout(r, 50));
   expect((await getSettings()).lastBackupAt).toBeNull();
   expect(screen.getByText('Last backup: never')).toBeInTheDocument();
   expect(screen.queryByRole('alert')).toBeNull();
+  expect(within(sheet).queryByText('Saved')).toBeNull();
 });
 
-test('export CSV uses BOM, csv type and dated filename', async () => {
+test('export CSV: the sheet shows the CSV; the saved file has a BOM, csv type and dated filename', async () => {
   const user = userEvent.setup();
   render(html`<${Settings} />`);
-  await user.click(await screen.findByRole('button', { name: 'Export CSV' }));
+  const sheet = await openExport(user, 'Export CSV');
+  expect(within(sheet).getByLabelText('Export text').value).toMatch(/^date,time/);
+  await user.click(within(sheet).getByRole('button', { name: 'Save file' }));
   await vi.waitFor(() => expect(shareOrDownload).toHaveBeenCalledTimes(1));
   const [filename, blob] = vi.mocked(shareOrDownload).mock.calls[0];
   expect(filename).toMatch(/^rwtm-sets-\d{4}-\d{2}-\d{2}\.csv$/);
@@ -89,6 +131,8 @@ test('export CSV uses BOM, csv type and dated filename', async () => {
   );
   expect(Array.from(bytes.slice(0, 3))).toEqual([0xef, 0xbb, 0xbf]);
   expect(new TextDecoder('utf-8', { ignoreBOM: true }).decode(bytes)).toMatch(/^﻿date,time/);
+  // A CSV export is not a backup.
+  expect((await getSettings()).lastBackupAt).toBeNull();
 });
 
 async function pickFile(content) {
@@ -107,7 +151,7 @@ test('import of invalid backup shows error and does not ask to confirm', async (
 
   const b = await pickFile('not json{');
   await user.upload(b.input, b.file);
-  expect(await screen.findByText('Not a valid backup file')).toBeInTheDocument();
+  expect(await screen.findByText(/^Not a valid backup file\. /)).toBeInTheDocument();
   expect(confirm).not.toHaveBeenCalled();
 });
 
@@ -152,6 +196,70 @@ test('import declined at confirm leaves data unchanged', async () => {
   await vi.waitFor(() => expect(confirm).toHaveBeenCalled());
   expect(await db.gyms.count()).toBe(0);
   expect(screen.queryByText('Backup restored')).not.toBeInTheDocument();
+});
+
+const BACKUP = {
+  format: 'rwtm-backup',
+  version: 1,
+  exportedAt: 1,
+  data: {
+    gyms: [{ id: 'g1', name: 'Pasted gym', createdAt: 1, archived: false }],
+    customCatalog: [],
+    gymExercises: [],
+    sessions: [],
+    sets: [],
+    settings: { theme: 'dark', autoCloseMinutes: 45, lastBackupAt: null },
+  },
+};
+
+async function pasteBackup(user, text) {
+  await user.click(await screen.findByRole('button', { name: 'Paste' }));
+  const area = screen.getByLabelText('Backup text');
+  area.focus();
+  await user.paste(text);
+  await user.click(screen.getByRole('button', { name: 'Import' }));
+}
+
+test('a pasted backup is confirmed and restored like a chosen file', async () => {
+  const user = userEvent.setup();
+  const confirm = vi.mocked(askConfirm).mockReset().mockResolvedValue(true);
+  render(html`<${Settings} />`);
+  await pasteBackup(user, JSON.stringify(BACKUP, null, 2));
+  expect(await screen.findByText('Backup restored')).toBeInTheDocument();
+  expect(confirm).toHaveBeenCalledWith('Replace all data with this backup?', 'Replace');
+  expect((await db.gyms.toArray()).map((g) => g.name)).toEqual(['Pasted gym']);
+  expect(document.documentElement.dataset.theme).toBe('dark');
+  // The paste box closes once restored.
+  expect(screen.queryByLabelText('Backup text')).toBeNull();
+});
+
+test('a pasted backup inside a ```json fence with prose around it is restored', async () => {
+  const user = userEvent.setup();
+  vi.mocked(askConfirm).mockReset().mockResolvedValue(true);
+  render(html`<${Settings} />`);
+  await pasteBackup(user, 'Here is your backup:\n\n```json\n' + JSON.stringify(BACKUP) + '\n```\n\nKeep it safe {really}.');
+  expect(await screen.findByText('Backup restored')).toBeInTheDocument();
+  expect(await db.gyms.count()).toBe(1);
+});
+
+test('invalid pasted text shows a clear error, asks nothing and keeps the text for fixing', async () => {
+  const user = userEvent.setup();
+  const confirm = vi.mocked(askConfirm).mockReset().mockResolvedValue(true);
+  render(html`<${Settings} />`);
+  await pasteBackup(user, '{"format": "rwtm-backup", "version": 1,');
+  expect(await screen.findByRole('alert')).toHaveTextContent('Not a valid backup file. The JSON is cut off');
+  await user.clear(screen.getByLabelText('Backup text'));
+  await user.click(screen.getByLabelText('Backup text'));
+  await user.paste('just some words');
+  await user.click(screen.getByRole('button', { name: 'Import' }));
+  expect(await screen.findByRole('alert')).toHaveTextContent('Not a valid backup file. No JSON found');
+  await user.clear(screen.getByLabelText('Backup text'));
+  await user.click(screen.getByLabelText('Backup text'));
+  await user.paste('{"format": "something-else"}');
+  await user.click(screen.getByRole('button', { name: 'Import' }));
+  expect(await screen.findByRole('alert')).toHaveTextContent('Not a Rage with the machine backup file.');
+  expect(confirm).not.toHaveBeenCalled();
+  expect(screen.getByLabelText('Backup text')).toBeInTheDocument();
 });
 
 test('copy prompt writes prompt containing "rwtm-machine" to clipboard', async () => {

@@ -16,10 +16,10 @@ these files directly. Edit a file, publish the folder again, reload.
 | `js/db/db.js` | Dexie database `rwtm`: tables and schema version |
 | `js/db/cloudSync.js` | Sync between Dexie and the artifact `db` capability |
 | `js/db/*Repo.js`, `backup.js`, `demo.js` | Reads and writes for gyms/machines, sessions/sets, settings, catalogue, backups, demo data |
-| `js/domain/*.js` | Pure logic: exercise catalogue, loading/weights, records and progress, CSV, Claude prompt and import format, `types.js` (record shapes as JSDoc) |
+| `js/domain/*.js` | Pure logic: exercise catalogue, loading/weights, records and progress, CSV, Claude prompt and import format, JSON from pasted text (`jsonText.js`), `types.js` (record shapes as JSDoc) |
 | `js/ui/App.js`, `router.js` | Screen switch and hash routes (`#/gyms`, `#/session/<id>` ...) |
 | `js/ui/screens/*.js` | One file per screen: Home, Gyms, GymDetail, ExerciseEdit, Session, Picker, Logging, Progress, Settings |
-| `js/ui/components/*.js` | Sheets, wheels, plate picker, chart, icons, rest timer |
+| `js/ui/components/*.js` | Sheets (including `ExportSheet`: Save file / Copy / the text, and `PasteBox`: paste-to-import), wheels, plate picker, chart, icons, rest timer |
 | `js/ui/lib/*.js` | In-page confirm sheet, file save/share (downloads capability), error text |
 
 Tests live outside this folder (`test/`, mirroring `js/`) so they are not published.
@@ -75,6 +75,18 @@ change shape, a migration that rewrites them.
   files run in the tests from node_modules. React must load once: keep `react` and `react-dom` on the same
   version (react-dom's build imports `/npm/react@<version>/+esm`, the URL `react` maps to).
 - Comments explain why; JSDoc types where they help a reader.
+- Choose files does not work in the Claude Android app (its WebView opens no picker); `navigator.share` is
+  refused and `<a download>` does nothing there. So every import must also accept paste, and every export
+  must also offer Copy:
+  - Import: next to "Choose file", a "Paste" option (`PasteBox`, or the machine sheet's text area). Both
+    routes call one function that takes the text; JSON is read with `parseJsonText`, which also accepts a
+    ```json fence or prose around the object.
+  - Export: open `ExportSheet` with `{ title, filename, text, blob, onDone? }`. "Save file" tries the
+    downloads capability and then the browser's paths; "Copy" calls `clipboard.writeText` in the click
+    handler and, if refused, selects the read-only text and says "Select all and copy". `onDone` runs only
+    after a confirmed save or copy (Export backup stamps "Last backup" there).
+  - Text areas holding file contents are uncontrolled (read through a ref), so a ~1 MB backup does not
+    re-render the screen on every change.
 
 ## The published artifact
 

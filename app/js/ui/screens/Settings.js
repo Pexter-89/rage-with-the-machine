@@ -7,10 +7,13 @@ import { addDemoData, hasDemoData, removeDemoData } from '../../db/demo.js';
 import { getSettings, updateSettings } from '../../db/settingsRepo.js';
 import { setsToCsv } from '../../domain/csv.js';
 import { buildClaudePrompt } from '../../domain/claudePrompt.js';
-import { readFileText, shareOrDownload } from '../lib/share.js';
+import { parseJsonText } from '../../domain/jsonText.js';
+import { readFileText } from '../lib/share.js';
 import { askConfirm } from '../lib/confirm.js';
 import { activeCloudSync, backupDocCount, CLOUD_DOC_LIMIT } from '../../db/cloudSync.js';
 import ConfirmSheet from '../components/ConfirmSheet.js';
+import ExportSheet from '../components/ExportSheet.js';
+import PasteBox from '../components/PasteBox.js';
 import TopBar from '../components/TopBar.js';
 import { html } from '../../lib/html.js';
 
@@ -62,6 +65,9 @@ export default function Settings() {
   const [copied, setCopied] = useState(false);
   const [manualPrompt, setManualPrompt] = useState(null);
   const [minutes, setMinutes] = useState(null);
+  /** @type {[import('../components/ExportSheet.js').Export | null, Function]} */
+  const [exporting, setExporting] = useState(null);
+  const [pasting, setPasting] = useState(false);
 
   useEffect(() => () => clearTimeout(copiedTimer.current), []);
 
@@ -91,56 +97,81 @@ export default function Settings() {
     setMessage(null);
     try {
       const now = Date.now();
-      const file = await exportBackup(now);
-      const blob = new Blob([JSON.stringify(file, null, 2)], { type: 'application/json' });
-      // Only a completed share or download counts as a backup; a cancelled sheet does not.
-      if (await shareOrDownload(`rwtm-backup-${localDate(now)}.json`, blob)) {
-        await updateSettings({ lastBackupAt: Date.now() });
-      }
+      const text = JSON.stringify(await exportBackup(now), null, 2);
+      setExporting({
+        title: 'Export backup',
+        filename: `rwtm-backup-${localDate(now)}.json`,
+        text,
+        blob: new Blob([text], { type: 'application/json' }),
+        // Only a completed save or copy counts as a backup; a cancelled save sheet does not.
+        onDone: () => updateSettings({ lastBackupAt: Date.now() }),
+      });
     } catch (e) {
       fail(e);
     }
   }
 
-  async function doImport(file) {
+  /** Restore messages show under the restore row, next to the paste box, instead of at the page's end. */
+  const sayRestore = (text, error) => setMessage({ text, error, at: 'restore' });
+
+  /**
+   * Restores a backup from its text, read from a chosen file or pasted. Resolves true when restored.
+   * @param {string} text
+   * @returns {Promise<boolean>}
+   */
+  async function restoreFromText(text) {
     setMessage(null);
     let json;
     try {
-      json = JSON.parse(await readFileText(file));
-    } catch {
-      setMessage({ text: 'Not a valid backup file', error: true });
-      return;
+      json = parseJsonText(text);
+    } catch (e) {
+      sayRestore(`Not a valid backup file. ${e instanceof Error ? e.message : String(e)}`, true);
+      return false;
     }
     const result = validateBackup(json);
     if (!result.ok) {
-      setMessage({ text: result.error, error: true });
-      return;
+      sayRestore(result.error, true);
+      return false;
     }
     if (activeCloudSync() && backupDocCount(result.file.data) > CLOUD_DOC_LIMIT) {
-      setMessage({
-        text: `This backup has more than ${CLOUD_DOC_LIMIT} rows, more than cloud storage holds`,
-        error: true,
-      });
-      return;
+      sayRestore(`This backup has more than ${CLOUD_DOC_LIMIT} rows, more than cloud storage holds`, true);
+      return false;
     }
-    if (!(await askConfirm('Replace all data with this backup?', 'Replace'))) return;
+    if (!(await askConfirm('Replace all data with this backup?', 'Replace'))) return false;
     try {
       await restoreBackup(result.file);
     } catch (e) {
       console.error(e);
-      setMessage({ text: 'Restore failed — your data was not changed', error: true });
-      return;
+      sayRestore('Restore failed — your data was not changed', true);
+      return false;
     }
     applyTheme((await getSettings()).theme);
-    setMessage({ text: 'Backup restored', error: false });
+    sayRestore('Backup restored', false);
+    return true;
+  }
+
+  async function importFile(file) {
+    let text;
+    try {
+      text = await readFileText(file);
+    } catch (e) {
+      sayRestore(`Could not read the file: ${e instanceof Error ? e.message : String(e)}`, true);
+      return;
+    }
+    await restoreFromText(text);
   }
 
   async function doExportCsv() {
     setMessage(null);
     try {
       const csv = setsToCsv(await buildCsvRows());
-      const blob = new Blob(['﻿', csv], { type: 'text/csv;charset=utf-8' });
-      await shareOrDownload(`rwtm-sets-${localDate(Date.now())}.csv`, blob);
+      setExporting({
+        title: 'Export CSV',
+        filename: `rwtm-sets-${localDate(Date.now())}.csv`,
+        text: csv,
+        // The BOM makes Excel read the file as UTF-8; the copied text goes without it.
+        blob: new Blob(['\uFEFF', csv], { type: 'text/csv;charset=utf-8' }),
+      });
     } catch (e) {
       fail(e);
     }
@@ -192,6 +223,12 @@ export default function Settings() {
     }
   }
 
+  const messageLine =
+    message &&
+    html`
+      <p className=${message.error ? 'error' : 'hint'} role=${message.error ? 'alert' : 'status'}>${message.text}</p>
+    `;
+
   return html`
     <main className="screen">
       <${TopBar} route=${{ name: 'settings' }} title="Settings" />
@@ -232,12 +269,31 @@ export default function Settings() {
             onChange=${(e) => {
               const file = e.target.files?.[0];
               e.target.value = '';
-              if (file) void doImport(file);
+              if (file) void importFile(file);
             }}
           />
-          <button className="btn btn-ghost" onClick=${() => fileRef.current?.click()}>
-            Import backup
-          </button>
+          <span>Restore backup</span>
+          <div className="nav-row">
+            <button className="btn btn-ghost" onClick=${() => fileRef.current?.click()}>
+              Choose file
+            </button>
+            <button className="btn btn-ghost" aria-expanded=${pasting} onClick=${() => setPasting((p) => !p)}>
+              Paste
+            </button>
+          </div>
+          ${
+            pasting &&
+            html`
+            <${PasteBox}
+              label="Backup text"
+              placeholder="Paste the backup's text here"
+              onSubmit=${async (text) => {
+                if (await restoreFromText(text)) setPasting(false);
+              }}
+            />
+          `
+          }
+          ${message?.at === 'restore' && messageLine}
         </li>
         <li className="row">
           <button className="btn btn-ghost" onClick=${() => void doExportCsv()}>
@@ -302,14 +358,9 @@ export default function Settings() {
         </li>
       </ul>
 
-      ${
-        message &&
-        html`
-        <p className=${message.error ? 'error' : 'hint'} role=${message.error ? 'alert' : 'status'}>
-          ${message.text}
-        </p>
-      `
-      }
+      ${message && !message.at && messageLine}
+
+      <${ExportSheet} item=${exporting} onClose=${() => setExporting(null)} />
 
       <${ConfirmSheet}
         title="Remove demo data?"

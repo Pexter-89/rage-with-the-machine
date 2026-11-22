@@ -4,9 +4,9 @@ import { getCatalog } from '../../db/catalogRepo.js';
 import { db } from '../../db/db.js';
 import { exportGymFile, listGymMachines, saveGymExercise } from '../../db/gymRepo.js';
 import { CATEGORIES } from '../../domain/catalog.js';
+import ExportSheet from '../components/ExportSheet.js';
 import ImportMachineSheet from '../components/ImportMachineSheet.js';
 import { oneLine } from '../lib/errors.js';
-import { shareOrDownload } from '../lib/share.js';
 import TopBar from '../components/TopBar.js';
 import { navigate } from '../router.js';
 import { html } from '../../lib/html.js';
@@ -15,6 +15,7 @@ import { html } from '../../lib/html.js';
 export default function GymDetail({ gymId }) {
   const [importing, setImporting] = useState(null);
   const [exportError, setExportError] = useState(null);
+  const [exporting, setExporting] = useState(null);
   const fileRef = useRef(null);
   const data = useLiveQuery(async () => {
     const gym = await db.gyms.get(gymId);
@@ -46,8 +47,13 @@ export default function GymDetail({ gymId }) {
           .toLowerCase()
           .replace(/[^a-z0-9]+/g, '-')
           .replace(/^-|-$/g, '') || 'gym';
-      const blob = new Blob([JSON.stringify(file, null, 2)], { type: 'application/json' });
-      await shareOrDownload(`rwtm-gym-${slug}.json`, blob);
+      const text = JSON.stringify(file, null, 2);
+      setExporting({
+        title: 'Export gym file',
+        filename: `rwtm-gym-${slug}.json`,
+        text,
+        blob: new Blob([text], { type: 'application/json' }),
+      });
     } catch (e) {
       setExportError(oneLine(e));
     }
@@ -165,6 +171,7 @@ export default function GymDetail({ gymId }) {
         </button>
       </div>
 
+      <${ExportSheet} item=${exporting} onClose=${() => setExporting(null)} />
       ${
         importing &&
         html`

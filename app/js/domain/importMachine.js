@@ -1,4 +1,5 @@
 import { CATEGORIES } from './catalog.js';
+import { matchingBrace } from './jsonText.js';
 
 /**
  * @typedef {object} ParsedMachine
@@ -18,27 +19,6 @@ const MAX_PLATE_SIZES = 20;
 const MAX_ADD_ONS = 3;
 const MIN_PLATE_STEP = 0.25;
 const KEBAB = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
-
-/**
- * Returns the end index (inclusive) of the object starting at `start`, skipping string literals; -1 if unbalanced.
- * @param {string} text
- * @param {number} start
- * @returns {number}
- */
-function matchingBrace(text, start) {
-  let depth = 0;
-  let inString = false;
-  for (let i = start; i < text.length; i++) {
-    const c = text[i];
-    if (inString) {
-      if (c === '\\') i++;
-      else if (c === '"') inString = false;
-    } else if (c === '"') inString = true;
-    else if (c === '{') depth++;
-    else if (c === '}' && --depth === 0) return i;
-  }
-  return -1;
-}
 
 /**
  * Every top-level JSON object with `format === 'rwtm-machine'` in the text, in order.
