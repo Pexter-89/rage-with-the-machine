@@ -14,9 +14,11 @@ export interface CsvRow {
   baseWeight: number | null;
   kind?: Kind;
   assisted?: boolean;
+  /** The session's body weight, if one was noted. */
+  bodyweight?: number | null;
 }
 
-export const CSV_HEADER = 'date,time,gym,exercise,category,machine,set,weight,reps,unit,base_weight,e1rm';
+export const CSV_HEADER = 'date,time,gym,exercise,category,machine,set,weight,reps,unit,base_weight,e1rm,bodyweight';
 
 const pad = (n: number) => String(n).padStart(2, '0');
 
@@ -46,6 +48,7 @@ export function setsToCsv(rows: CsvRow[]): string {
       r.unit,
       r.baseWeight === null ? '' : formatWeight(r.baseWeight),
       e1rmCell(r),
+      r.bodyweight == null ? '' : formatWeight(r.bodyweight),
     ].join(',');
   });
   return [CSV_HEADER, ...lines].join('\r\n') + '\r\n';

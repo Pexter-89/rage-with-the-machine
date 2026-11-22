@@ -67,12 +67,14 @@ export async function restoreBackup(file: BackupFile): Promise<void> {
 }
 
 export async function buildCsvRows(): Promise<CsvRow[]> {
-  const [sets, gyms, catalog, machines] = await Promise.all([
+  const [sets, gyms, catalog, machines, sessions] = await Promise.all([
     db.sets.orderBy('completedAt').toArray(),
     db.gyms.toArray(),
     getCatalog(),
     db.gymExercises.toArray(),
+    db.sessions.toArray(),
   ]);
+  const bodyweight = new Map(sessions.map((s) => [s.id, s.bodyweight ?? null]));
   const gymName = new Map(gyms.map((g) => [g.id, g.name]));
   const entry = new Map(catalog.map((c) => [c.id, c]));
   const label = new Map(machines.map((m) => [m.id, m.label]));
@@ -92,6 +94,7 @@ export async function buildCsvRows(): Promise<CsvRow[]> {
       baseWeight: s.baseWeight,
       kind: c?.kind,
       assisted: c?.assisted ?? false,
+      bodyweight: bodyweight.get(s.sessionId) ?? null,
     };
   });
 }

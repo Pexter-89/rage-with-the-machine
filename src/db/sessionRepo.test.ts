@@ -14,9 +14,12 @@ import {
   finishSession,
   getLastTime,
   getOpenSession,
+  lastBodyweight,
   prefill,
+  recordHistory,
   recomputePlateHistory,
   sessionExercises,
+  setSessionBodyweight,
   setsForItem,
   startOrResumeSession,
   startSession,
@@ -216,6 +219,35 @@ describe('sets', () => {
     expect((await setsForItem(s.id, item)).length).toBe(1);
   });
 
+  test('addSet after a delete never reuses an order', async () => {
+    const s = await startSession(g.id, T0);
+    await addSet(s.id, item, 62, 10, T0 + 1);
+    const b = await addSet(s.id, item, 62, 10, T0 + 2);
+    await addSet(s.id, item, 62, 10, T0 + 3);
+    await deleteSet(b.id, T0 + 4);
+    const d = await addSet(s.id, item, 62, 10, T0 + 5);
+    expect(d.order).toBe(4);
+    expect((await setsForItem(s.id, item)).map((r) => r.order)).toEqual([1, 3, 4]);
+  });
+
+  test('recordHistory for a machine not set up at this gym compares only un-set-up sets of the same gym', async () => {
+    const other = await addGym('Away');
+    const f = { ...item, gymExerciseId: null, key: 'c:' + item.catalogId };
+    const mk = async (gymId: string, gymExerciseId: string | null, sid: string) => {
+      await db.sessions.add({ id: sid, gymId, startedAt: T0, endedAt: T0 + 1, lastActivityAt: T0 });
+      await db.sets.add({
+        id: crypto.randomUUID(), sessionId: sid, gymId, catalogId: item.catalogId, gymExerciseId, order: 1,
+        weight: 10, reps: 5, baseWeight: null, unit: 'kg', completedAt: T0,
+      });
+    };
+    await mk(g.id, null, 'same-gym-bare');
+    await mk(other.id, null, 'other-gym-bare');
+    await mk(g.id, item.gymExerciseId, 'same-gym-setup');
+    const hist = await recordHistory(f, true, 'cur', g.id);
+    expect(hist.map((x) => x.sessionId)).toEqual(['same-gym-bare']);
+    expect((await recordHistory(f, false, 'cur', g.id)).length).toBe(3);
+  });
+
   test('updateSet patches and bumps lastActivityAt; deleteSet removes and bumps', async () => {
     const s = await startSession(g.id, T0);
     const a = await addSet(s.id, item, 62, 10, T0 + 1000);
@@ -308,11 +340,53 @@ describe('prefill', () => {
   });
   const last = (sets: SetEntry[]) => ({ sessionId: 'x', gymId: 'g', date: 0, sets });
 
-  test('last current set wins; else last set of lastTime; else null', () => {
-    expect(prefill([mk(1, 50, 10), mk(2, 55, 8)], last([mk(1, 40, 12)]))).toEqual({ weight: 55, reps: 8 });
-    expect(prefill([], last([mk(1, 40, 12), mk(2, 42, 11)]))).toEqual({ weight: 42, reps: 11 });
+  test('set N starts from set N of last time; past its end, from the latest set of this session', () => {
+    const ramp = last([mk(1, 40, 12), mk(2, 60, 8), mk(3, 65, 6)]);
+    expect(prefill([], ramp)).toEqual({ weight: 40, reps: 12, fromLast: true, snap: true });
+    expect(prefill([mk(1, 35, 12)], ramp)).toEqual({ weight: 60, reps: 8, fromLast: true, snap: true });
+    expect(prefill([mk(1, 42, 12), mk(2, 62, 8), mk(3, 67, 5)], ramp)).toEqual({ weight: 67, reps: 5, fromLast: false, snap: false });
+    expect(prefill([mk(1, 50, 10), mk(2, 55, 8)], last([mk(1, 40, 12)]))).toEqual({ weight: 55, reps: 8, fromLast: false, snap: false });
+  });
+
+  test('where last time climbed or held, a heavier set today is not stepped back from', () => {
+    const ramp = last([mk(1, 40, 12), mk(2, 60, 8), mk(3, 60, 6)]);
+    expect(prefill([mk(1, 40, 12), mk(2, 70, 8)], ramp)).toEqual({ weight: 70, reps: 6, fromLast: true, snap: false });
+    expect(prefill([mk(1, 45, 12)], ramp)).toEqual({ weight: 60, reps: 8, fromLast: true, snap: true });
+    // A drop set last time is still followed down.
+    const drop = last([mk(1, 65, 8), mk(2, 55, 10)]);
+    expect(prefill([mk(1, 70, 8)], drop)).toEqual({ weight: 55, reps: 10, fromLast: true, snap: true });
+  });
+
+  test('last time is read in set order whatever order it is stored in', () => {
+    expect(prefill([], last([mk(2, 60, 8), mk(1, 40, 12)]))).toEqual({ weight: 40, reps: 12, fromLast: true, snap: true });
+  });
+
+  test('nothing to go on gives null', () => {
     expect(prefill([], last([]))).toBeNull();
     expect(prefill([], null)).toBeNull();
+  });
+});
+
+describe('body weight', () => {
+  test('is noted on the open session, cleared with null, and refused once the session has ended', async () => {
+    const s = await startSession(g.id, T0);
+    await setSessionBodyweight(s.id, 82.5);
+    expect((await db.sessions.get(s.id))!.bodyweight).toBe(82.5);
+    await setSessionBodyweight(s.id, null);
+    expect((await db.sessions.get(s.id))!.bodyweight).toBeNull();
+    await db.sessions.update(s.id, { endedAt: T0 + 1 });
+    await expect(setSessionBodyweight(s.id, 80)).rejects.toBeInstanceOf(SessionEndedError);
+  });
+
+  test('lastBodyweight is the newest other session that has one', async () => {
+    const add = async (id: string, startedAt: number, bodyweight?: number | null) =>
+      db.sessions.add({ id, gymId: g.id, startedAt, endedAt: startedAt + 1, lastActivityAt: startedAt, bodyweight });
+    await add('a', T0, 80);
+    await add('b', T0 + 10_000, 81);
+    await add('c', T0 + 20_000, null);
+    await add('d', T0 + 30_000);
+    expect(await lastBodyweight('none')).toBe(81);
+    expect(await lastBodyweight('b')).toBe(80);
   });
 });
 

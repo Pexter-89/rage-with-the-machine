@@ -1,19 +1,123 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState, type MutableRefObject } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../../db/db';
 import { getCatalog } from '../../db/catalogRepo';
-import { SessionEndedError, deleteExerciseSets, finishSession, sessionExercises } from '../../db/sessionRepo';
+import {
+  SessionEndedError,
+  deleteExerciseSets,
+  finishSession,
+  lastBodyweight,
+  sessionExercises,
+  setSessionBodyweight,
+} from '../../db/sessionRepo';
 import { resolveItem } from '../../db/gymRepo';
 import { formatTime } from '../../domain/dates';
-import { formatSummary, summarizeSets } from '../../domain/metrics';
+import { parseWeightInput } from '../../domain/loading';
+import { formatSummary, formatWeight, summarizeSets } from '../../domain/metrics';
 import ConfirmSheet from '../components/ConfirmSheet';
 import TopBar from '../components/TopBar';
+import { oneLine } from '../lib/errors';
 import { navigate, type Route } from '../router';
 
 function formatElapsed(ms: number): string {
   const min = Math.max(0, Math.floor(ms / 60_000));
   if (min < 60) return `${min} min`;
   return `${Math.floor(min / 60)} h ${String(min % 60).padStart(2, '0')} min`;
+}
+
+/**
+ * Optional body weight for the session: saved on Enter, when the field loses focus, when the screen is left or
+ * `flush` is called (iOS Safari does not blur on a button tap); emptying it clears it.
+ */
+function BodyweightField({
+  sessionId,
+  saved,
+  previous,
+  flush,
+}: {
+  sessionId: string;
+  saved: number | null;
+  previous: number | null;
+  flush: MutableRefObject<() => Promise<void>>;
+}) {
+  const show = (kg: number | null) => (kg === null ? '' : formatWeight(kg));
+  const [text, setText] = useState(() => show(saved));
+  const [error, setError] = useState<string | null>(null);
+  const textRef = useRef(text);
+  const savedRef = useRef(saved);
+  const mounted = useRef(true);
+  savedRef.current = saved;
+
+  function edit(value: string) {
+    textRef.current = value;
+    setText(value);
+  }
+
+  /** Saves the typed value if it is valid and changed; an invalid one reverts the field to the saved weight. */
+  async function commit() {
+    const raw = textRef.current;
+    const kg = raw.trim() === '' ? null : parseWeightInput(raw);
+    if (kg === null && raw.trim() !== '') {
+      if (mounted.current) edit(show(savedRef.current));
+      return;
+    }
+    if (kg !== null && !(kg > 0 && kg < 500)) {
+      if (mounted.current) edit(show(savedRef.current));
+      return;
+    }
+    if (kg === savedRef.current) {
+      if (mounted.current) edit(show(savedRef.current));
+      return;
+    }
+    try {
+      await setSessionBodyweight(sessionId, kg);
+      savedRef.current = kg;
+      if (mounted.current) {
+        edit(show(kg));
+        setError(null);
+      }
+    } catch (e) {
+      if (!mounted.current) return;
+      if (e instanceof SessionEndedError) navigate({ name: 'home' });
+      else setError(oneLine(e));
+    }
+  }
+
+  const commitRef = useRef(commit);
+  commitRef.current = commit;
+  flush.current = () => commitRef.current();
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      void commitRef.current();
+    };
+  }, []);
+
+  return (
+    <>
+      <label className="bodyweight">
+        <span>BW</span>
+        <input
+          inputMode="decimal"
+          aria-label="Body weight, kg"
+          placeholder={previous === null ? '' : formatWeight(previous)}
+          value={text}
+          onChange={(e) => edit(e.target.value)}
+          onBlur={() => void commit()}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') e.currentTarget.blur();
+          }}
+        />
+        <span>kg</span>
+      </label>
+      {error && (
+        <p className="error" role="alert">
+          {error}
+        </p>
+      )}
+    </>
+  );
 }
 
 export default function Session({ sessionId }: { sessionId: string }) {
@@ -37,7 +141,7 @@ export default function Session({ sessionId }: { sessionId: string }) {
         };
       }),
     );
-    return { session, gymName: gym?.name ?? '', cards };
+    return { session, gymName: gym?.name ?? '', cards, previousBodyweight: await lastBodyweight(sessionId) };
   }, [sessionId]);
 
   const [now, setNow] = useState(() => Date.now());
@@ -47,6 +151,7 @@ export default function Session({ sessionId }: { sessionId: string }) {
   }, []);
 
   const [removing, setRemoving] = useState<string | null>(null);
+  const flushBodyweight = useRef<() => Promise<void>>(async () => {});
 
   useEffect(() => {
     if (data === null) navigate({ name: 'home' });
@@ -59,10 +164,11 @@ export default function Session({ sessionId }: { sessionId: string }) {
         <TopBar route={route} />
       </main>
     );
-  const { session, gymName, cards } = data;
+  const { session, gymName, cards, previousBodyweight } = data;
   const removingCard = cards.find((c) => c.key === removing);
 
   async function finish() {
+    await flushBodyweight.current();
     await finishSession(sessionId, Date.now());
     navigate({ name: 'home' });
   }
@@ -74,7 +180,10 @@ export default function Session({ sessionId }: { sessionId: string }) {
           Finish
         </button>
       </TopBar>
-      <p className="hint">{`Started ${formatTime(session.startedAt)} · ${formatElapsed(now - session.startedAt)}`}</p>
+      <div className="session-meta">
+        <p className="hint left">{`Started ${formatTime(session.startedAt)} · ${formatElapsed(now - session.startedAt)}`}</p>
+        <BodyweightField sessionId={sessionId} saved={session.bodyweight ?? null} previous={previousBodyweight} flush={flushBodyweight} />
+      </div>
 
       <ul className="list session-cards">
         {cards.map((c) => (
