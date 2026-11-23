@@ -20,7 +20,7 @@ these files directly. Edit a file, publish the folder again, reload.
 | `js/ui/App.js`, `router.js` | Screen switch and hash routes as plain `#name`s the claude.ai host passes through (`#gyms`, `#session--<id>`, `#programs--<gymId>--<programId or new>`, `#prefs` ...; segments escape non-alphanumerics as `-xx`; old `#/path` links still parse) |
 | `js/ui/screens/*.js` | One file per screen: Home, Gyms, GymDetail, ExerciseEdit, Session (with a program's plan as a to-do list), Picker, Logging, Programs (a gym's program list), ProgramEdit, Progress, Settings |
 | `js/ui/components/*.js` | Sheets (including `ExportSheet`: Save file / Copy / the text, `PasteBox`: paste-to-import, `ExercisePickerSheet`: the whole catalogue, `SaveProgramSheet`), `PickerColumns` (the picker's category columns), wheels, stepper, plate picker, chart, icons, rest timer |
-| `js/ui/lib/*.js` | In-page confirm sheet, file save/share (downloads capability), error text |
+| `js/ui/lib/*.js` | In-page confirm sheet, file save/share (downloads capability), error text, `swipeNav.js` (swipe right = back, left = forward; installed once in `main.js`) |
 
 Tests live outside this folder (`test/`, mirroring `js/`) so they are not published.
 
@@ -98,6 +98,17 @@ into `TABLES`/`PRIMARY_KEY` in `cloudSync.js`, the backup, and the artifact's db
     after a confirmed save or copy (Export backup stamps "Last backup" there).
   - Text areas holding file contents are uncontrolled (read through a ref), so a ~1 MB backup does not
     re-render the screen on every change.
+
+- Back and forward are swipes (`js/ui/lib/swipeNav.js`), because the Claude Android app's back button and
+  edge gesture exit the artifact. Swipe right does what browser back does in `router.js` (`goBack`: close
+  the top sheet, else up one level; nothing at Home); swipe left (`goForward`) returns to the screen the last
+  back step left, and only then. A touch is a swipe when it starts more than 32px (`EDGE_PX`) from either
+  edge (Android owns those), is horizontal at 12px (|dx| > 1.5·|dy|; otherwise it is left to scrolling) and
+  is released past a third of the width or flung (> 0.5 px/ms, > 60px). Touches starting in form fields,
+  `.wheel`, `canvas`, or anything that scrolls sideways (`overflow-x: auto|scroll` and wider than its box)
+  never swipe. **Mark any other horizontally interactive element (a slider, a sideways drag) with
+  `data-no-swipe`**, which covers it and everything inside it. Do not add a sheet drag-to-close sideways:
+  a horizontal swipe on a sheet already closes it.
 
 ## The published artifact
 

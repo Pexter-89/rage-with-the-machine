@@ -1,3 +1,4 @@
+import { fakeHistory } from '../helpers/fakeHistory.js';
 import { parseRoute, toHash } from '../../app/js/ui/router.js';
 
 const uuid = '3f2a9c1e-8b7d-4e2f-a1b0-9c8d7e6f5a4b';
@@ -116,46 +117,6 @@ test('unknown or malformed hashes go home', () => {
 });
 
 describe('history mirrors the menu hierarchy', () => {
-  /** A browser-like history: go() lands asynchronously and fires popstate, as real browsers do. */
-  function fakeHistory() {
-    const real = window.history;
-    const entries = [{ state: null, url: location.href }];
-    let i = 0;
-    const show = () => real.replaceState(null, '', entries[i].url);
-    const h = {
-      get state() {
-        return entries[i].state;
-      },
-      get length() {
-        return entries.length;
-      },
-      pushState(state, _, url) {
-        entries.splice(i + 1);
-        entries.push({ state, url: new URL(url, location.href).href });
-        i++;
-        show();
-      },
-      replaceState(state, _, url) {
-        entries[i] = { state, url: new URL(url, location.href).href };
-        show();
-      },
-      go(n) {
-        setTimeout(() => {
-          const j = Math.max(0, Math.min(entries.length - 1, i + n));
-          if (j === i) return;
-          i = j;
-          show();
-          window.dispatchEvent(new PopStateEvent('popstate', { state: entries[i].state }));
-        });
-      },
-      back() {
-        h.go(-1);
-      },
-    };
-    vi.stubGlobal('history', h);
-    return { urls: () => entries.slice(0, i + 1).map((e) => new URL(e.url).hash), back: () => h.go(-1) };
-  }
-
   let router;
   let hist;
 
@@ -230,6 +191,52 @@ describe('history mirrors the menu hierarchy', () => {
     router.navigate({ name: 'gym', gymId: 'g' });
     await settled();
     expect(hist.urls()).toEqual(['#home', '#gyms', '#gym--g']);
+  });
+
+  test('goBack closes the top sheet first, then goes up; goForward returns to where back came from', async () => {
+    router.installRouter();
+    router.navigate({ name: 'gyms' });
+    router.navigate({ name: 'gym', gymId: 'g' });
+    const close = vi.fn();
+    router.openLayer(close);
+    expect(router.canGoForward()).toBe(false);
+    router.goBack();
+    await settled();
+    expect(close).toHaveBeenCalledTimes(1);
+    expect(hist.urls()).toEqual(['#home', '#gyms', '#gym--g']);
+    router.goBack();
+    await settled();
+    expect(location.hash).toBe('#gyms');
+    router.goBack();
+    await settled();
+    expect(hist.urls()).toEqual(['#home']);
+    expect(router.canGoBack()).toBe(false);
+    router.goBack(); // at Home: nothing, never leaves the app
+    await settled();
+    expect(hist.urls()).toEqual(['#home']);
+    expect(router.canGoForward()).toBe(true);
+    router.goForward();
+    await settled();
+    expect(hist.urls()).toEqual(['#home', '#gyms']);
+    router.goForward();
+    await settled();
+    expect(hist.urls()).toEqual(['#home', '#gyms', '#gym--g']);
+    expect(router.canGoForward()).toBe(false);
+    router.goForward();
+    await settled();
+    expect(location.hash).toBe('#gym--g');
+  });
+
+  test('the browser back button also enables forward; any other navigation clears it', async () => {
+    router.installRouter();
+    router.navigate({ name: 'progress' });
+    hist.back();
+    await settled();
+    expect(location.hash).toBe('#home');
+    expect(router.canGoForward()).toBe(true);
+    router.navigate({ name: 'gyms' });
+    await settled();
+    expect(router.canGoForward()).toBe(false);
   });
 
   test('parentOf follows the menu levels', () => {

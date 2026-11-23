@@ -6,6 +6,7 @@ import { CloudSync, resolveCloudDb, setActiveCloudSync } from './db/cloudSync.js
 import { RwtmDB, db, setDb } from './db/db.js';
 import App from './ui/App.js';
 import ErrorBoundary from './ui/ErrorBoundary.js';
+import { installSwipeNav } from './ui/lib/swipeNav.js';
 import { installRouter } from './ui/router.js';
 import { Fragment, html } from './lib/html.js';
 
@@ -169,6 +170,8 @@ function retryBoot() {
 }
 
 installRouter();
+// Back/forward by swiping: the Android app's own back button exits the artifact.
+installSwipeNav();
 createRoot(document.getElementById('root')).render(html`
   <${StrictMode}>
     <${ArtifactRoot} />

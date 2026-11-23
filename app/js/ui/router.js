@@ -199,6 +199,13 @@ let waiting = false;
 let waitTimer;
 let current = typeof location === 'undefined' ? '' : location.hash;
 const listeners = new Set();
+/**
+ * Screens the user went back from (most recent last), so an in-app forward swipe can return to them. Only
+ * back steps fill it; any other navigation clears it. Sheets are never re-opened by forward.
+ * @type {string[]}
+ */
+let forward = [];
+const FORWARD_MAX = 20;
 
 /** @param {string} hash */
 const depthOf = (hash) => chainOf(parseRoute(hash)).length - 1;
@@ -264,7 +271,20 @@ function onPopState() {
     return;
   }
   layers = [];
+  const before = current;
+  const after = location.hash;
+  if (after !== before) {
+    if (depthOf(after) < depthOf(before)) pushForward(before);
+    else if (forward[forward.length - 1] === after) forward.pop();
+    else forward = [];
+  }
   emit();
+}
+
+/** @param {string} hash */
+function pushForward(hash) {
+  forward.push(toHash(parseRoute(hash)));
+  if (forward.length > FORWARD_MAX) forward.shift();
 }
 
 let installed = false;
@@ -288,38 +308,97 @@ export function installRouter() {
   current = location.hash;
 }
 
-/** @param {Route} r */
-export function navigate(r) {
-  enqueue(() => {
-    const target = chainOf(r).map(toHash);
-    const here = chainOf(parseRoute(location.hash)).map(toHash);
-    let k = 0;
-    while (k < target.length && k < here.length && target[k] === here[k]) k++;
-    const back = here.length - k + entries();
-    const known = stateDepth() === here.length - 1 + entries();
-    layers = [];
-    const rest = target.slice(k);
-    if (!known || (back === 0 && rest.length === 0)) {
-      // Unknown history below (or already there): replace the current entry. Unmarked, so it stays unknown.
-      const last = target[target.length - 1];
-      if (location.hash !== last) history.replaceState(known ? history.state : null, '', last);
-      emit();
-      return false;
-    }
-    if (back === 0) {
+/**
+ * Moves the history to `r`'s chain; true when it started a traversal (the queue then waits for popstate).
+ * @param {Route} r
+ * @returns {boolean}
+ */
+function navOp(r) {
+  const target = chainOf(r).map(toHash);
+  const here = chainOf(parseRoute(location.hash)).map(toHash);
+  let k = 0;
+  while (k < target.length && k < here.length && target[k] === here[k]) k++;
+  const back = here.length - k + entries();
+  const known = stateDepth() === here.length - 1 + entries();
+  layers = [];
+  const rest = target.slice(k);
+  if (!known || (back === 0 && rest.length === 0)) {
+    // Unknown history below (or already there): replace the current entry. Unmarked, so it stays unknown.
+    const last = target[target.length - 1];
+    if (location.hash !== last) history.replaceState(known ? history.state : null, '', last);
+    emit();
+    return false;
+  }
+  if (back === 0) {
+    rest.forEach((h, i) => history.pushState({ rwtm: k + i }, '', h));
+    emit();
+    return false;
+  }
+  // Go up to the common ancestor, then push down to the target once the traversal lands.
+  if (rest.length > 0) {
+    queue.unshift(() => {
       rest.forEach((h, i) => history.pushState({ rwtm: k + i }, '', h));
       emit();
       return false;
+    });
+  }
+  return go(-back);
+}
+
+/** @param {Route} r */
+export function navigate(r) {
+  enqueue(() => {
+    forward = [];
+    return navOp(r);
+  });
+}
+
+/**
+ * Whether an in-app back step does anything: true with a sheet open or below Home.
+ * @returns {boolean}
+ */
+export function canGoBack() {
+  return layers.length > 0 || parentOf(parseRoute(waiting ? current : location.hash)) !== null;
+}
+
+/**
+ * The phone's back button, from inside the app (the swipe gesture; the Android back button exits the
+ * artifact): closes the top sheet, else goes up one level and remembers the screen for `goForward`.
+ * Does nothing at Home with no sheet open, so it never leaves the app.
+ */
+export function goBack() {
+  enqueue(() => {
+    const top = layers.pop();
+    if (top) {
+      // Like the sheet closing itself, minus the closeLayer round trip (its cleanup then finds no layer).
+      top.close();
+      return top.entry ? go(-1) : false;
     }
-    // Go up to the common ancestor, then push down to the target once the traversal lands.
-    if (rest.length > 0) {
-      queue.unshift(() => {
-        rest.forEach((h, i) => history.pushState({ rwtm: k + i }, '', h));
-        emit();
-        return false;
-      });
-    }
-    return go(-back);
+    const here = location.hash;
+    const up = parentOf(parseRoute(here));
+    if (!up) return false;
+    pushForward(here);
+    return navOp(up);
+  });
+}
+
+/**
+ * Whether `goForward` has a screen to return to: the user went back from it and is still on its parent,
+ * with no sheet open.
+ * @returns {boolean}
+ */
+export function canGoForward() {
+  const next = forward[forward.length - 1];
+  if (!next || layers.length > 0) return false;
+  const p = parentOf(parseRoute(next));
+  return p !== null && toHash(p) === toHash(parseRoute(waiting ? current : location.hash));
+}
+
+/** Returns to the screen the last back step left (see `canGoForward`); otherwise does nothing. */
+export function goForward() {
+  enqueue(() => {
+    if (!canGoForward()) return false;
+    return navOp(parseRoute(/** @type {string} */ (forward.pop())));
   });
 }
 
