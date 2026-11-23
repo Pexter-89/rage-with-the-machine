@@ -335,7 +335,7 @@ input {
   align-items: center;
   justify-content: center;
   width: 100%;
-  height: 40px;
+  height: 50px;
   padding: 0;
   border: 0;
   background: transparent;
@@ -345,6 +345,8 @@ input {
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   scroll-snap-align: center;
+  /* A fling stops at the next value instead of coasting past it; drag for bigger jumps, or tap to type. */
+  scroll-snap-stop: always;
   user-select: none;
   will-change: transform, opacity;
   cursor: pointer;
@@ -357,8 +359,8 @@ input {
 .wheel-input {
   flex: none;
   width: 100%;
-  height: 40px;
-  min-height: 40px;
+  height: 50px;
+  min-height: 50px;
   padding: 0 8px;
   border-radius: 0;
   font-size: 1.9rem;
@@ -567,7 +569,7 @@ input {
 .btn-complete {
   flex: none;
   width: 72px;
-  height: 200px;
+  height: 250px;
   font-size: 2rem;
 }
 
@@ -691,8 +693,8 @@ input {
 
 .plate-total-value {
   width: 100%;
-  height: 200px;
-  min-height: 200px;
+  height: 250px;
+  min-height: 250px;
   border: 0;
   border-radius: 12px;
   background: var(--surface);

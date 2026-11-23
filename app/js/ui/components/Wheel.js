@@ -11,7 +11,8 @@ import {
 import { formatWeight } from '../../domain/metrics.js';
 import { html } from '../../lib/html.js';
 
-export const ITEM_HEIGHT = 40;
+/** Row height: tall enough that a value takes a deliberate drag to change (also the selection band's height). */
+export const ITEM_HEIGHT = 50;
 /** Rows visible at once; odd, so one sits in the middle under the selection band. */
 export const VISIBLE_ROWS = 5;
 const SETTLE_MS = 120;
