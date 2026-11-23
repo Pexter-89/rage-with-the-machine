@@ -1,5 +1,13 @@
 import { describe, expect, test } from 'vitest';
-import { buildSeries, buildSessionList, buildTableRows, gymColor } from '../../app/js/domain/progress.js';
+import {
+  bodyweightPoints,
+  bodyweightSummary,
+  buildSeries,
+  buildSessionList,
+  buildTableRows,
+  gymColor,
+  rollingAverage,
+} from '../../app/js/domain/progress.js';
 
 let n = 0;
 const mkSet = (p = {}) => ({
@@ -119,5 +127,36 @@ describe('buildSessionList', () => {
       { sessionId: 'b', date: 5000, gymId: 'g2', exercises: ['Yer'] },
       { sessionId: 'a', date: 1000, gymId: 'g1', exercises: ['Xer', 'Yer'] },
     ]);
+  });
+});
+
+describe('body weight', () => {
+  const DAY = 24 * 60 * 60 * 1000;
+  const T = 1_700_000_000_000;
+  const session = (id, day, bodyweight, gymId = 'g1') => ({ id, gymId, startedAt: T + day * DAY, endedAt: null, bodyweight });
+
+  test('bodyweightPoints keeps sessions with a body weight, oldest first', () => {
+    const pts = bodyweightPoints([session('b', 5, 81), session('a', 0, 80), session('c', 7, null), session('d', 9)]);
+    expect(pts).toEqual([
+      { sessionId: 'a', date: T, gymId: 'g1', value: 80 },
+      { sessionId: 'b', date: T + 5 * DAY, gymId: 'g1', value: 81 },
+    ]);
+  });
+
+  test('rollingAverage averages the four weeks up to each point', () => {
+    const pts = bodyweightPoints([session('a', 0, 80), session('b', 10, 82), session('c', 40, 84)]);
+    expect(rollingAverage(pts).map((p) => p.value)).toEqual([80, 81, 84]);
+  });
+
+  test('bodyweightSummary: latest, change over the points, 4-week average', () => {
+    expect(bodyweightSummary([])).toBeNull();
+    const one = bodyweightSummary(bodyweightPoints([session('a', 0, 80.5)]));
+    expect(one).toEqual({ latest: 80.5, latestDate: T, change: null, average4w: 80.5 });
+    const s = bodyweightSummary(
+      bodyweightPoints([session('a', 0, 84), session('b', 20, 83.1), session('c', 30, 82.3)]),
+    );
+    expect(s.latest).toBe(82.3);
+    expect(s.change).toBe(-1.7);
+    expect(s.average4w).toBe(82.7);
   });
 });

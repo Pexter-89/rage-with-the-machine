@@ -11,8 +11,12 @@ import {
 import { formatWeight } from '../../domain/metrics.js';
 import { html } from '../../lib/html.js';
 
-/** Row height: tall enough that a value takes a deliberate drag to change (also the selection band's height). */
-export const ITEM_HEIGHT = 50;
+/**
+ * Row height (also the selection band's height): 45px, between the old 40px (too easy to overshoot) and
+ * 50px (too tall). Must match `.wheel-item`, `.wheel-input`, and the 5-row 225px `.btn-complete` and
+ * `.plate-total-value` heights in styles.css.
+ */
+export const ITEM_HEIGHT = 45;
 /** Rows visible at once; odd, so one sits in the middle under the selection band. */
 export const VISIBLE_ROWS = 5;
 const SETTLE_MS = 120;

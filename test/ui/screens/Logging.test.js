@@ -96,7 +96,7 @@ test('shows last time from same gym: "Last time · 10 Oct 2026 · Kamppi" and ev
   render(html`<${Logging} sessionId=${s.id} itemKey=${ge.id} />`);
   expect(await screen.findByText(`Last time · ${formatDate(old.startedAt)} · Kamppi`)).toBeInTheDocument();
   expect(formatDate(old.startedAt)).toBe('10 Oct 2026');
-  expect(screen.getByText('60×10 · 62×8 kg')).toBeInTheDocument();
+  expect(screen.getByText('60 kg × 10 · 62 kg × 8')).toBeInTheDocument();
 });
 
 test('no last time renders no box', async () => {

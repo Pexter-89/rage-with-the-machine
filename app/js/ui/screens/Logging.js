@@ -15,7 +15,7 @@ import {
 } from '../../db/sessionRepo.js';
 import { formatDate } from '../../domain/dates.js';
 import { parseRepsInput, parseWeightInput, reachableValues, snapToWheel, wheelValues } from '../../domain/loading.js';
-import { formatSetList, formatWeight, recordSetIds } from '../../domain/metrics.js';
+import { formatSet, formatSetList, recordSetIds } from '../../domain/metrics.js';
 import { formatTarget, planItemFor } from '../../domain/programs.js';
 import ConfirmSheet from '../components/ConfirmSheet.js';
 import AddOnStack from '../components/AddOnStack.js';
@@ -299,9 +299,6 @@ export default function Logging({ sessionId, itemKey }) {
     }
   }
 
-  const setText = (s) =>
-    s.unit === 'level' ? `${formatWeight(s.weight)} L × ${s.reps}` : `${formatWeight(s.weight)} kg × ${s.reps}`;
-
   return html`
     <main className="screen logging">
       <${TopBar} route=${route} title=${item.name} />
@@ -339,7 +336,7 @@ export default function Logging({ sessionId, itemKey }) {
             html`
           <li key=${s.id} className="split">
             <button className="btn btn-left done-set" onClick=${() => setEditingId(s.id)}>
-              ${`${i + 1}  ${setText(s)}`}
+              ${`${i + 1}  ${formatSet(s)}`}
               ${
                 records.has(s.id) &&
                 html`
@@ -391,7 +388,7 @@ export default function Logging({ sessionId, itemKey }) {
       </${Sheet}>
       <${ConfirmSheet}
         title="Delete set?"
-        message=${deleting ? `Set ${sets.indexOf(deleting) + 1}: ${setText(deleting)}` : null}
+        message=${deleting ? `Set ${sets.indexOf(deleting) + 1}: ${formatSet(deleting)}` : null}
         onConfirm=${async () => {
           if (!deleting) return;
           try {

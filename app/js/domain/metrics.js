@@ -74,14 +74,20 @@ export function formatSummary(s, unit) {
 }
 
 /**
- * Every set in order, one unit at the end: "60×10 · 62.5×8 · 65×6 kg".
+ * One set as shown everywhere a set is listed, unit beside the weight: "50 kg × 8", "5 L × 12".
+ * @param {WR & { unit: Unit }} s
+ * @returns {string}
+ */
+export const formatSet = (s) => `${formatWeight(s.weight)} ${s.unit === 'level' ? 'L' : 'kg'} × ${s.reps}`;
+
+/**
+ * Every set in order, each with its unit so the last one never reads as "8 kg":
+ * "60 kg × 10 · 62.5 kg × 8 · 65 kg × 6".
  * @param {(WR & { unit: Unit })[]} sets
  * @returns {string}
  */
 export function formatSetList(sets) {
-  if (sets.length === 0) return '';
-  const list = sets.map((s) => `${formatWeight(s.weight)}×${s.reps}`).join(' · ');
-  return `${list} ${sets[0].unit === 'level' ? 'L' : 'kg'}`;
+  return sets.map(formatSet).join(' · ');
 }
 
 /** @typedef {WR & { id: string, order: number, unit: Unit }} Ordered */

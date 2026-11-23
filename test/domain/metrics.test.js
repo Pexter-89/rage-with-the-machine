@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import {
   e1rm,
+  formatSet,
   formatSetList,
   formatSummary,
   recordSetIds,
@@ -52,14 +53,27 @@ describe('metrics', () => {
       '2 sets · 8 reps · 62.5–70 kg',
     );
   });
-  test('formatSetList lists every set with one unit', () => {
+  test('formatSet puts the unit with the weight, like the logged-set rows', () => {
+    expect(formatSet({ weight: 20, reps: 10, unit: 'kg' })).toBe('20 kg × 10');
+    expect(formatSet({ weight: 7, reps: 12, unit: 'level' })).toBe('7 L × 12');
+    expect(formatSet({ weight: 0, reps: 15, unit: 'kg' })).toBe('0 kg × 15');
+  });
+
+  test('formatSetList lists every set, each with its unit, identical sets not merged', () => {
+    expect(
+      formatSetList([
+        { weight: 50, reps: 8, unit: 'kg' },
+        { weight: 50, reps: 8, unit: 'kg' },
+        { weight: 50, reps: 8, unit: 'kg' },
+      ]),
+    ).toBe('50 kg × 8 · 50 kg × 8 · 50 kg × 8');
     expect(
       formatSetList([
         { weight: 60, reps: 10, unit: 'kg' },
         { weight: 62.5, reps: 8, unit: 'kg' },
       ]),
-    ).toBe('60×10 · 62.5×8 kg');
-    expect(formatSetList([{ weight: 7, reps: 12, unit: 'level' }])).toBe('7×12 L');
+    ).toBe('60 kg × 10 · 62.5 kg × 8');
+    expect(formatSetList([{ weight: 7, reps: 12, unit: 'level' }])).toBe('7 L × 12');
     expect(formatSetList([])).toBe('');
   });
 });

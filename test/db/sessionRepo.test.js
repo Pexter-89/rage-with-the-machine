@@ -19,6 +19,7 @@ import {
   recordHistory,
   recomputePlateHistory,
   sessionExercises,
+  setHistoryBodyweight,
   setSessionBodyweight,
   setsForItem,
   startOrResumeSession,
@@ -399,6 +400,20 @@ describe('body weight', () => {
     expect((await db.sessions.get(s.id)).bodyweight).toBeNull();
     await db.sessions.update(s.id, { endedAt: T0 + 1 });
     await expect(setSessionBodyweight(s.id, 80)).rejects.toBeInstanceOf(SessionEndedError);
+  });
+
+  test('setHistoryBodyweight edits an ended session, clears with null and refuses out-of-range values', async () => {
+    const s = await startSession(g.id, T0);
+    await db.sessions.update(s.id, { endedAt: T0 + 1 });
+    await setHistoryBodyweight(s.id, 81.5);
+    expect((await db.sessions.get(s.id)).bodyweight).toBe(81.5);
+    await setHistoryBodyweight(s.id, null);
+    expect((await db.sessions.get(s.id)).bodyweight).toBeNull();
+    for (const bad of [0, -1, 500, Number.NaN]) {
+      await expect(setHistoryBodyweight(s.id, bad)).rejects.toBeInstanceOf(RangeError);
+    }
+    expect((await db.sessions.get(s.id)).bodyweight).toBeNull();
+    await expect(setHistoryBodyweight('missing', 80)).rejects.toThrow('Session not found');
   });
 
   test('lastBodyweight is the newest other session that has one', async () => {

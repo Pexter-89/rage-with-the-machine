@@ -31,3 +31,17 @@ test('form controls render at 16px or more so iOS does not zoom into them', () =
   }
   expect(checked).toBeGreaterThanOrEqual(3);
 });
+
+test('wheel heights follow ITEM_HEIGHT and a fling may pass several values', async () => {
+  const { ITEM_HEIGHT, VISIBLE_ROWS } = await import('../app/js/ui/components/Wheel.js');
+  expect(ITEM_HEIGHT).toBe(45);
+  const row = `${ITEM_HEIGHT}px`;
+  const win = `${ITEM_HEIGHT * VISIBLE_ROWS}px`;
+  expect(rule('.wheel-item')).toMatch(new RegExp(`height:\\s*${row}`));
+  expect(rule('.wheel-input')).toMatch(new RegExp(`(?:^|\\s)height:\\s*${row}`));
+  expect(rule('.wheel-input')).toMatch(new RegExp(`min-height:\\s*${row}`));
+  expect(rule('.btn-complete')).toMatch(new RegExp(`height:\\s*${win}`));
+  expect(rule('.plate-total-value')).toMatch(new RegExp(`(?:^|\\s)height:\\s*${win}`));
+  expect(rule('.plate-total-value')).toMatch(new RegExp(`min-height:\\s*${win}`));
+  expect(css).not.toMatch(/scroll-snap-stop:\s*always/);
+});

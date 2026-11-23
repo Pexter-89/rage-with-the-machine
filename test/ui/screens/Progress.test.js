@@ -239,3 +239,79 @@ test('a completed session in history can be saved as a program', async () => {
     { catalogId: 'push-up', sets: 1, reps: 12 },
   ]);
 });
+
+describe('body weight', () => {
+  const session = (id, gymId, startedAt, bodyweight) =>
+    db.sessions.add({ id, gymId, startedAt, endedAt: startedAt + 3600_000, lastActivityAt: startedAt, bodyweight });
+
+  test('session rows show the body weight noted for that session', async () => {
+    await session('s1', gA, day(0, 5), 82.5);
+    await session('s2', gB, day(1, 9));
+    render(html`<${Progress} />`);
+    const rows = within(await screen.findByRole('table')).getAllByRole('row');
+    await vi.waitFor(() => expect(rows[2]).toHaveTextContent('BW 82.5 kg'));
+    expect(rows[1]).not.toHaveTextContent('BW');
+  });
+
+  test('the history sheet edits an ended session’s body weight (decimal comma), refuses bad values, clears it', async () => {
+    const user = userEvent.setup();
+    await session('s1', gA, day(0, 5), 82.5);
+    render(html`<${Progress} />`);
+    const table = await screen.findByRole('table');
+    await user.click(within(table).getAllByRole('row')[2]);
+    const sheet = await screen.findByRole('dialog', { name: /Alpha$/ });
+    expect(sheet).toHaveTextContent('Body weight · 82.5 kg');
+    await user.click(within(sheet).getByRole('button', { name: 'Edit body weight' }));
+    const input = within(sheet).getByLabelText('Body weight, kg');
+    expect(input).toHaveValue('82.5');
+    await user.clear(input);
+    await user.type(input, '600');
+    await user.click(within(sheet).getByRole('button', { name: 'Save' }));
+    expect(await within(sheet).findByRole('alert')).toHaveTextContent('below 500 kg');
+    expect((await db.sessions.get('s1')).bodyweight).toBe(82.5);
+    await user.clear(input);
+    await user.type(input, '81,7{Enter}');
+    await vi.waitFor(async () => expect((await db.sessions.get('s1')).bodyweight).toBe(81.7));
+    expect(await within(sheet).findByText('Body weight · 81.7 kg')).toBeInTheDocument();
+    await user.click(within(sheet).getByRole('button', { name: 'Edit body weight' }));
+    await user.clear(within(sheet).getByLabelText('Body weight, kg'));
+    await user.click(within(sheet).getByRole('button', { name: 'Save' }));
+    await vi.waitFor(async () => expect((await db.sessions.get('s1')).bodyweight).toBeNull());
+    expect(await within(sheet).findByRole('button', { name: 'Add body weight' })).toBeInTheDocument();
+  });
+
+  test('Body weight view: empty state explains the BW field', async () => {
+    const user = userEvent.setup();
+    render(html`<${Progress} />`);
+    await user.click(await screen.findByRole('button', { name: 'Body weight' }));
+    expect(screen.getByText('No body weight noted yet.')).toBeInTheDocument();
+    expect(screen.getByText(/BW field at the top of the session screen/)).toBeInTheDocument();
+    expect(screen.queryByLabelText('Exercise')).toBeNull();
+    expect(screen.queryByRole('group', { name: 'Gyms' })).toBeNull();
+    expect(charts.configs).toHaveLength(0);
+  });
+
+  test('Body weight view: chart with 4-week average, summary, date slicers apply, gyms do not', async () => {
+    const user = userEvent.setup();
+    await session('s1', gA, day(0, 5), 84);
+    await session('s2', gB, day(1, 9), 82);
+    await session('s3', gA, new Date(2025, 11, 20, 10).getTime(), 86);
+    render(html`<${Progress} />`);
+    await user.click(await screen.findByRole('button', { name: 'Body weight' }));
+    const cfg = lastConfig();
+    expect(cfg.data.datasets[0].data.map((p) => p.y)).toEqual([86, 84, 82]);
+    expect(cfg.data.datasets[1].borderDash).toBeTruthy();
+    expect(screen.getByText('Latest').nextSibling).toHaveTextContent('82 kg');
+    expect(screen.getByText('Change').nextSibling).toHaveTextContent('−4 kg');
+    expect(within(screen.getByRole('table')).getAllByRole('row')).toHaveLength(4);
+
+    await user.selectOptions(screen.getByLabelText('Year'), '2026');
+    expect(lastConfig().data.datasets[0].data.map((p) => p.y)).toEqual([84, 82]);
+    expect(screen.getByText('Change').nextSibling).toHaveTextContent('−2 kg');
+
+    // Rows open the session sheet, where the body weight can be edited.
+    await user.click(within(screen.getByRole('table')).getAllByRole('row')[1]);
+    const sheet = await screen.findByRole('dialog', { name: /Beta$/ });
+    expect(sheet).toHaveTextContent('Body weight · 82 kg');
+  });
+});

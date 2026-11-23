@@ -124,3 +124,59 @@ export function buildSessionList(sets, catalog) {
     })
     .sort((a, b) => b.date - a.date);
 }
+
+// ---- body weight ----
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+/** The rolling-average window: four weeks. */
+export const BW_WINDOW_MS = 28 * DAY_MS;
+
+const round1 = (n) => Math.round(n * 10) / 10;
+
+/**
+ * One point per session that has a body weight, oldest first (date = the session's start).
+ * @param {Session[]} sessions
+ * @returns {ProgressPoint[]}
+ */
+export function bodyweightPoints(sessions) {
+  return sessions
+    .filter((s) => typeof s.bodyweight === 'number' && Number.isFinite(s.bodyweight))
+    .map((s) => ({ sessionId: s.id, date: s.startedAt, gymId: s.gymId, value: /** @type {number} */ (s.bodyweight) }))
+    .sort((a, b) => a.date - b.date);
+}
+
+/**
+ * Average of each point and the points in the four weeks before it (rounded to 0.1 kg), for a trend line.
+ * @param {ProgressPoint[]} points Oldest first.
+ * @returns {{ date: number, value: number }[]}
+ */
+export function rollingAverage(points) {
+  return points.map((p, i) => {
+    const window = points.slice(0, i + 1).filter((q) => q.date > p.date - BW_WINDOW_MS);
+    return { date: p.date, value: round1(window.reduce((sum, q) => sum + q.value, 0) / window.length) };
+  });
+}
+
+/**
+ * @typedef {object} BodyweightSummary
+ * @property {number} latest The newest body weight.
+ * @property {number} latestDate
+ * @property {number | null} change Newest minus oldest in the points given (null with one point).
+ * @property {number} average4w Average over the four weeks up to the newest point.
+ */
+
+/**
+ * @param {ProgressPoint[]} points Oldest first.
+ * @returns {BodyweightSummary | null}
+ */
+export function bodyweightSummary(points) {
+  if (points.length === 0) return null;
+  const last = points[points.length - 1];
+  const avg = rollingAverage(points);
+  return {
+    latest: last.value,
+    latestDate: last.date,
+    change: points.length > 1 ? round1(last.value - points[0].value) : null,
+    average4w: avg[avg.length - 1].value,
+  };
+}

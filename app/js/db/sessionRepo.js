@@ -367,6 +367,23 @@ export async function setSessionBodyweight(sessionId, kg) {
 }
 
 /**
+ * Corrects the body weight of any session, open or ended (from Progress history); null clears it. Unlike
+ * `setSessionBodyweight` this does not require the session to be open, and it checks the value itself.
+ * @param {string} sessionId
+ * @param {number | null} kg
+ * @returns {Promise<void>}
+ */
+export async function setHistoryBodyweight(sessionId, kg) {
+  if (kg !== null && !(Number.isFinite(kg) && kg > 0 && kg < 500)) {
+    throw new RangeError('Body weight must be more than 0 and less than 500 kg');
+  }
+  await db.transaction('rw', db.sessions, async () => {
+    if (!(await db.sessions.get(sessionId))) throw new Error('Session not found');
+    await db.sessions.update(sessionId, { bodyweight: kg });
+  });
+}
+
+/**
  * The most recent body weight noted in any other session.
  * @param {string} excludeSessionId
  * @returns {Promise<number | null>}

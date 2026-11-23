@@ -53,7 +53,9 @@ Programs hold catalogue exercises and target sets × reps, never weights or mach
 own machine (the only visible one, else the one last used there, else the user is asked once). A session
 started from a program has `programId` and `plan` (`[{ catalogId, sets, reps }]`, a copy taken at start, so
 editing or deleting the program never rewrites history; swapping a missing exercise edits only `plan`). Both
-fields are absent on sessions logged without a program and in older data. Backups carry `programs` (backup
+fields are absent on sessions logged without a program and in older data. `bodyweight` is typed in the BW field on the
+Session screen while it is open; Progress shows it on session rows, edits it on ended sessions too
+(`setHistoryBodyweight`) and charts it in its Body weight view. Backups carry `programs` (backup
 format still version 1); a backup without the list restores with no programs.
 
 `loading` is one of `{ type: "stack", weights, unit?, addOns? }`, `{ type: "plate", base, step }`,

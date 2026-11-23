@@ -335,7 +335,7 @@ input {
   align-items: center;
   justify-content: center;
   width: 100%;
-  height: 50px;
+  height: 45px;
   padding: 0;
   border: 0;
   background: transparent;
@@ -345,8 +345,6 @@ input {
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   scroll-snap-align: center;
-  /* A fling stops at the next value instead of coasting past it; drag for bigger jumps, or tap to type. */
-  scroll-snap-stop: always;
   user-select: none;
   will-change: transform, opacity;
   cursor: pointer;
@@ -359,8 +357,8 @@ input {
 .wheel-input {
   flex: none;
   width: 100%;
-  height: 50px;
-  min-height: 50px;
+  height: 45px;
+  min-height: 45px;
   padding: 0 8px;
   border-radius: 0;
   font-size: 1.9rem;
@@ -569,7 +567,7 @@ input {
 .btn-complete {
   flex: none;
   width: 72px;
-  height: 250px;
+  height: 225px;
   font-size: 2rem;
 }
 
@@ -693,8 +691,8 @@ input {
 
 .plate-total-value {
   width: 100%;
-  height: 250px;
-  min-height: 250px;
+  height: 225px;
+  min-height: 225px;
   border: 0;
   border-radius: 12px;
   background: var(--surface);
@@ -897,6 +895,54 @@ textarea {
   white-space: nowrap;
 }
 
+/* A session's body weight under its exercises or sets in the Progress tables. */
+.row-bw {
+  display: block;
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 0.75rem;
+  white-space: nowrap;
+}
+
+/* ---- body weight (Progress) ---- */
+.bw-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  margin: 0;
+}
+
+.bw-summary > div {
+  min-width: 0;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: var(--surface);
+}
+
+.bw-summary dt {
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+.bw-summary dd {
+  margin: 2px 0 0;
+  font-size: 1.1rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.bw-summary dd.bw-sub {
+  color: var(--muted);
+  font-size: 0.7rem;
+  font-weight: 400;
+  white-space: normal;
+}
+
+.empty-bw p {
+  margin: 0 0 6px;
+}
+
 /* ---- import preview ---- */
 .file-chips {
   list-style: none;
@@ -967,6 +1013,17 @@ textarea {
 .history-set {
   font-weight: 500;
   cursor: default;
+}
+
+.history-bw {
+  margin-bottom: 8px;
+}
+
+.history-bw-edit {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
 }
 
 .split > .split-x.armed {
