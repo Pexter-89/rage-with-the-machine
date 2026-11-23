@@ -6,6 +6,7 @@ import { startSession } from '../../../app/js/db/sessionRepo.js';
 import { formatTime } from '../../../app/js/domain/dates.js';
 import Session from '../../../app/js/ui/screens/Session.js';
 import { html } from '../../../app/js/lib/html.js';
+import { toHash } from '../../../app/js/ui/router.js';
 
 beforeEach(async () => {
   await resetDb();
@@ -61,7 +62,7 @@ test('Finish session ends session and navigates home', async () => {
   render(html`<${Session} sessionId=${s.id} />`);
   await userEvent.click(await screen.findByRole('button', { name: 'Finish session' }));
   await vi.waitFor(async () => expect((await db.sessions.get(s.id))?.endedAt).not.toBeNull());
-  expect(location.hash).toBe('#/');
+  expect(location.hash).toBe(toHash({ name: 'home' }));
 });
 
 test('Session lists logged exercises with summary "2 sets · 8–10 reps · 62–72 kg"', async () => {
@@ -83,14 +84,14 @@ test('Session lists logged exercises with summary "2 sets · 8–10 reps · 62�
   expect(card).toHaveTextContent('Technogym');
   expect(card).toHaveTextContent('2 sets · 8–10 reps · 62–72 kg');
   await userEvent.click(card);
-  expect(location.hash).toBe(`#/session/${s.id}/log/${ge.id}`);
+  expect(location.hash).toBe(toHash({ name: 'log', sessionId: s.id, key: ge.id }));
 });
 
 test('Log exercise navigates to picker', async () => {
   const { s } = await seed();
   render(html`<${Session} sessionId=${s.id} />`);
   await userEvent.click(await screen.findByRole('button', { name: /Log exercise/ }));
-  expect(location.hash).toBe(`#/session/${s.id}/pick`);
+  expect(location.hash).toBe(toHash({ name: 'pick', sessionId: s.id }));
 });
 
 test('an ended or missing session redirects home', async () => {
@@ -99,7 +100,7 @@ test('an ended or missing session redirects home', async () => {
   await db.sessions.update(s.id, { endedAt: Date.now() });
   location.hash = `#/session/${s.id}`;
   render(html`<${Session} sessionId=${s.id} />`);
-  await vi.waitFor(() => expect(location.hash).toBe('#/'));
+  await vi.waitFor(() => expect(location.hash).toBe(toHash({ name: 'home' })));
 });
 
 test('the ✕ on a logged exercise deletes its sets from the session after confirming', async () => {

@@ -6,6 +6,7 @@ import { startSession } from '../../../app/js/db/sessionRepo.js';
 import ExerciseEdit from '../../../app/js/ui/screens/ExerciseEdit.js';
 import { html } from '../../../app/js/lib/html.js';
 import { askConfirm } from '../../../app/js/ui/lib/confirm.js';
+import { toHash } from '../../../app/js/ui/router.js';
 
 // The artifact asks with an in-page sheet (covered in confirm.test.js); here the answer is stubbed.
 vi.mock('../../../app/js/ui/lib/confirm.js', () => ({ askConfirm: vi.fn(), inPageConfirm: vi.fn() }));
@@ -37,7 +38,7 @@ test('ExerciseEdit: create stack machine from "5, 10, 15 20"', async () => {
     hidden: false,
     loading: { type: 'stack', weights: [5, 10, 15, 20], unit: 'kg' },
   });
-  expect(location.hash).toBe(`#/gym/${g.id}`);
+  expect(location.hash).toBe(toHash({ name: 'gym', gymId: g.id }));
 });
 
 test('stack weights are sorted on save and invalid input is rejected inline', async () => {
@@ -232,7 +233,7 @@ test('Delete removes the gym exercise and returns to the gym', async () => {
   render(html`<${ExerciseEdit} gymId=${g.id} geId=${ge.id} />`);
   await user.click(await screen.findByRole('button', { name: 'Delete' }));
   await vi.waitFor(async () => expect(await db.gymExercises.count()).toBe(0));
-  expect(location.hash).toBe(`#/gym/${g.id}`);
+  expect(location.hash).toBe(toHash({ name: 'gym', gymId: g.id }));
 });
 
 test('decimal commas in stack weights are kept', async () => {

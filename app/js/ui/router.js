@@ -4,37 +4,113 @@ import { useSyncExternalStore } from 'react';
  * @typedef {{ name: 'home' } | { name: 'session', sessionId: string } | { name: 'pick', sessionId: string } | { name: 'log', sessionId: string, key: string } | { name: 'gyms' } | { name: 'gym', gymId: string } | { name: 'exercise', gymId: string, geId: string | 'new', catalogId?: string } | { name: 'progress' } | { name: 'settings' } | { name: 'programs', gymId: string } | { name: 'program', gymId: string, programId: string | 'new' }} Route
  */
 
-const enc = encodeURIComponent;
+// ---- hash encoding ----
+//
+// The claude.ai artifact host only passes a plain `#name` (ASCII letters, digits, hyphens) between the
+// artifact's link and location.hash, so a route is a word plus segments joined by `--`, e.g.
+// `#session--3f2a-2d...--log--c-3abench-2dpress`. Inside a segment letters and digits stay as they are and
+// every other UTF-8 byte (`-` included) becomes `-` plus two lowercase hex digits; a lone `-` is therefore
+// always followed by hex, which keeps `--` unambiguous. The words avoid the names claude.ai reserves
+// (`settings`, `sidebar`, `customize`, `upgrade`, `downloads`, `comment-*`): Settings is `#prefs`.
+// The old `#/path` form (stored links, open tabs) still parses.
+
+const utf8 = new TextEncoder();
+const strictUtf8 = new TextDecoder('utf-8', { fatal: true });
+
+/** @param {string} s */
+function encSeg(s) {
+  let out = '';
+  for (const b of utf8.encode(s)) {
+    const c = String.fromCharCode(b);
+    out += /[A-Za-z0-9]/.test(c) ? c : '-' + b.toString(16).padStart(2, '0');
+  }
+  return out;
+}
+
+/**
+ * @param {string} s
+ * @returns {string} Throws on anything toHash could not have produced.
+ */
+function decSeg(s) {
+  if (!/^(?:[A-Za-z0-9]|-[0-9a-f]{2})+$/.test(s)) throw new Error('bad segment');
+  const bytes = [];
+  for (let i = 0; i < s.length; i++) {
+    if (s[i] === '-') {
+      bytes.push(parseInt(s.slice(i + 1, i + 3), 16));
+      i += 2;
+    } else bytes.push(s.charCodeAt(i));
+  }
+  return strictUtf8.decode(new Uint8Array(bytes));
+}
+
+/**
+ * @param {string} word A plain route word.
+ * @param {...string} segs Raw segments, encoded here.
+ */
+const h = (word, ...segs) => '#' + [word, ...segs.map(encSeg)].join('--');
 
 /**
  * @param {Route} r
- * @returns {string}
+ * @returns {string} Always matches /^#[A-Za-z0-9-]+$/.
  */
 export function toHash(r) {
   switch (r.name) {
     case 'home':
-      return '#/';
+      return '#home';
     case 'session':
-      return `#/session/${enc(r.sessionId)}`;
+      return h('session', r.sessionId);
     case 'pick':
-      return `#/session/${enc(r.sessionId)}/pick`;
+      return h('session', r.sessionId) + '--pick';
     case 'log':
-      return `#/session/${enc(r.sessionId)}/log/${enc(r.key)}`;
+      return h('session', r.sessionId) + '--log--' + encSeg(r.key);
     case 'gyms':
-      return '#/gyms';
+      return '#gyms';
     case 'gym':
-      return `#/gym/${enc(r.gymId)}`;
+      return h('gym', r.gymId);
     case 'exercise':
-      return `#/gym/${enc(r.gymId)}/exercise/${enc(r.geId)}` + (r.catalogId ? `?catalog=${enc(r.catalogId)}` : '');
+      return h('gym', r.gymId) + '--exercise--' + encSeg(r.geId) + (r.catalogId ? '--' + encSeg(r.catalogId) : '');
     case 'progress':
-      return '#/progress';
+      return '#progress';
     case 'settings':
-      return '#/settings';
+      return '#prefs';
     case 'programs':
-      return `#/programs/${enc(r.gymId)}`;
+      return h('programs', r.gymId);
     case 'program':
-      return `#/programs/${enc(r.gymId)}/${enc(r.programId)}`;
+      return h('programs', r.gymId, r.programId);
   }
+}
+
+/**
+ * The route for path segments `d` (route word first, the rest decoded); home when they name nothing.
+ * @param {string[]} d
+ * @param {string | undefined} catalogId
+ * @param {string} settingsWord
+ * @returns {Route}
+ */
+function routeOf(d, catalogId, settingsWord) {
+  if (d[0] === 'session' && d[1]) {
+    if (d.length === 2) return { name: 'session', sessionId: d[1] };
+    if (d.length === 3 && d[2] === 'pick') return { name: 'pick', sessionId: d[1] };
+    if (d.length === 4 && d[2] === 'log') return { name: 'log', sessionId: d[1], key: d[3] };
+  } else if (d[0] === 'gyms' && d.length === 1) {
+    return { name: 'gyms' };
+  } else if (d[0] === 'gym' && d[1]) {
+    if (d.length === 2) return { name: 'gym', gymId: d[1] };
+    if (d.length === 4 && d[2] === 'exercise') {
+      return catalogId
+        ? { name: 'exercise', gymId: d[1], geId: d[3], catalogId }
+        : { name: 'exercise', gymId: d[1], geId: d[3] };
+    }
+  } else if (d[0] === 'programs' && d[1]) {
+    // A gym's program list (programs are gym-independent; the gym is where a tap starts one).
+    if (d.length === 2) return { name: 'programs', gymId: d[1] };
+    if (d.length === 3) return { name: 'program', gymId: d[1], programId: d[2] };
+  } else if (d[0] === 'progress' && d.length === 1) {
+    return { name: 'progress' };
+  } else if (d[0] === settingsWord && d.length === 1) {
+    return { name: 'settings' };
+  }
+  return { name: 'home' };
 }
 
 /**
@@ -42,34 +118,20 @@ export function toHash(r) {
  * @returns {Route}
  */
 export function parseRoute(hash) {
-  const [path, query = ''] = hash.replace(/^#\/?/, '').split('?');
   try {
-    const d = path.split('/').filter(Boolean).map(decodeURIComponent);
-    if (d[0] === 'session' && d[1]) {
-      if (d.length === 2) return { name: 'session', sessionId: d[1] };
-      if (d.length === 3 && d[2] === 'pick') return { name: 'pick', sessionId: d[1] };
-      if (d.length === 4 && d[2] === 'log') return { name: 'log', sessionId: d[1], key: d[3] };
-    } else if (d[0] === 'gyms' && d.length === 1) {
-      return { name: 'gyms' };
-    } else if (d[0] === 'gym' && d[1]) {
-      if (d.length === 2) return { name: 'gym', gymId: d[1] };
-      if (d.length === 4 && d[2] === 'exercise') {
-        const catalogId = new URLSearchParams(query).get('catalog') ?? undefined;
-        return catalogId
-          ? { name: 'exercise', gymId: d[1], geId: d[3], catalogId }
-          : { name: 'exercise', gymId: d[1], geId: d[3] };
-      }
-    } else if (d[0] === 'programs' && d[1]) {
-      // A gym's program list (programs are gym-independent; the gym is where a tap starts one).
-      if (d.length === 2) return { name: 'programs', gymId: d[1] };
-      if (d.length === 3) return { name: 'program', gymId: d[1], programId: d[2] };
-    } else if (d[0] === 'progress' && d.length === 1) {
-      return { name: 'progress' };
-    } else if (d[0] === 'settings' && d.length === 1) {
-      return { name: 'settings' };
+    if (hash.startsWith('#/')) {
+      // The old `#/path?catalog=id` form.
+      const [path, query = ''] = hash.slice(2).split('?');
+      const d = path.split('/').filter(Boolean).map(decodeURIComponent);
+      return routeOf(d, new URLSearchParams(query).get('catalog') ?? undefined, 'settings');
     }
+    const parts = hash.replace(/^#/, '').split('--');
+    const d = [parts[0], ...parts.slice(1).map(decSeg)];
+    // An exercise's optional catalog id is a fifth segment.
+    const catalogId = d[0] === 'gym' && d[2] === 'exercise' && d.length === 5 ? d.pop() : undefined;
+    return routeOf(d, catalogId, 'prefs');
   } catch {
-    // malformed percent-encoding falls through to home
+    // malformed encoding falls through to home
   }
   return { name: 'home' };
 }

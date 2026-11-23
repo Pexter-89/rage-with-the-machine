@@ -6,6 +6,7 @@ import { formatDate } from '../../../app/js/domain/dates.js';
 import { gymColor } from '../../../app/js/domain/progress.js';
 import Progress from '../../../app/js/ui/screens/Progress.js';
 import { html } from '../../../app/js/lib/html.js';
+import { toHash } from '../../../app/js/ui/router.js';
 
 const charts = vi.hoisted(() => ({ configs: [], destroyed: 0 }));
 vi.mock('chart.js', () => {
@@ -172,7 +173,7 @@ test('Home button navigates home', async () => {
   const user = userEvent.setup();
   render(html`<${Progress} />`);
   await user.click(await screen.findByRole('button', { name: '‹ Home' }));
-  expect(location.hash).toBe('#/');
+  expect(location.hash).toBe(toHash({ name: 'home' }));
 });
 
 test('tapping a row opens its sets; a set is deleted on the second tap, even from an ended session', async () => {

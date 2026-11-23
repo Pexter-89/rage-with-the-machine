@@ -7,6 +7,7 @@ import { addSet } from '../../../app/js/db/sessionRepo.js';
 import { formatDate } from '../../../app/js/domain/dates.js';
 import Session from '../../../app/js/ui/screens/Session.js';
 import { html } from '../../../app/js/lib/html.js';
+import { toHash } from '../../../app/js/ui/router.js';
 
 beforeEach(async () => {
   await resetDb();
@@ -69,9 +70,9 @@ test('extra exercises appear below the plan; a planned card opens logging on thi
   expect(screen.getByRole('button', { name: 'Delete Dumbbell Curl sets' })).toBeInTheDocument();
   expect(plan().queryByText('Dumbbell Curl')).toBeNull();
   await user.click(screen.getByRole('button', { name: 'Leg Press, 0 of 2 sets' }));
-  expect(location.hash).toBe(`#/session/${s.id}/log/${lp.id}`);
+  expect(location.hash).toBe(toHash({ name: 'log', sessionId: s.id, key: lp.id }));
   await user.click(screen.getByRole('button', { name: 'Pull-Up, 0 of 3 sets' }));
-  expect(location.hash).toBe(`#/session/${s.id}/log/${encodeURIComponent('c:pull-up')}`);
+  expect(location.hash).toBe(toHash({ name: 'log', sessionId: s.id, key: 'c:pull-up' }));
 });
 
 test('an exercise the gym lacks says "Not at this gym"; Swap replaces it with one of the same category here', async () => {
@@ -113,7 +114,7 @@ test('several machines for an exercise: asks once, then the one last used here i
   const sheet = await screen.findByRole('dialog', { name: 'Which Lat Pulldown?' });
   expect(within(sheet).getAllByRole('button').map((b) => b.textContent.trim())).toEqual(['Cable tower', 'Plate-loaded']);
   await user.click(within(sheet).getByRole('button', { name: 'Plate-loaded' }));
-  expect(location.hash).toBe(`#/session/${s.id}/log/${plate.id}`);
+  expect(location.hash).toBe(toHash({ name: 'log', sessionId: s.id, key: plate.id }));
   view.unmount();
 
   await log(s.id, 'lat-pulldown', plate.id);
@@ -122,7 +123,7 @@ test('several machines for an exercise: asks once, then the one last used here i
   expect(card).toHaveTextContent('Plate-loaded');
   await user.click(card);
   expect(screen.queryByRole('dialog')).toBeNull();
-  expect(location.hash).toBe(`#/session/${s.id}/log/${plate.id}`);
+  expect(location.hash).toBe(toHash({ name: 'log', sessionId: s.id, key: plate.id }));
 });
 
 test('Save as program on an ongoing session: shown once something is logged, named gym + date by default', async () => {

@@ -35,25 +35,25 @@ test('a render throw shows the fallback with the first line of the error', () =>
   expect(screen.getByRole('alert')).not.toHaveTextContent('stack frame');
 });
 
-test('Home navigates to #/ and resets the boundary', async () => {
+test('Home navigates to #home and resets the boundary', async () => {
   const user = userEvent.setup();
   render(
     html`
     <${ErrorBoundary}>
-      <${Boom} okOn=${['#/']} />
+      <${Boom} okOn=${['#home']} />
     </${ErrorBoundary}>
   `,
   );
   await user.click(screen.getByRole('button', { name: 'Home' }));
-  expect(location.hash).toBe('#/');
-  expect(screen.getByText('fine on #/')).toBeInTheDocument();
+  expect(location.hash).toBe('#home');
+  expect(screen.getByText('fine on #home')).toBeInTheDocument();
   expect(screen.queryByRole('heading', { name: 'Something went wrong' })).toBeNull();
 });
 
-test('Settings navigates to #/settings, resets the boundary, and the backup controls work there', async () => {
+test('Settings navigates to #prefs, resets the boundary, and the backup controls work there', async () => {
   const user = userEvent.setup();
   function Child() {
-    if (location.hash !== '#/settings') throw new Error('broken screen');
+    if (location.hash !== '#prefs') throw new Error('broken screen');
     return html`<${Settings} />`;
   }
   render(
@@ -64,7 +64,7 @@ test('Settings navigates to #/settings, resets the boundary, and the backup cont
   `,
   );
   await user.click(screen.getByRole('button', { name: 'Settings' }));
-  expect(location.hash).toBe('#/settings');
+  expect(location.hash).toBe('#prefs');
   expect(await screen.findByRole('button', { name: 'Export backup' })).toBeEnabled();
   expect(screen.getByRole('button', { name: 'Choose file' })).toBeEnabled();
   expect(screen.getByRole('button', { name: 'Paste' })).toBeEnabled();

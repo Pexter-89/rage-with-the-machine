@@ -6,6 +6,7 @@ import { db, resetDb } from '../../../app/js/db/db.js';
 import { shareOrDownload } from '../../../app/js/ui/lib/share.js';
 import GymDetail from '../../../app/js/ui/screens/GymDetail.js';
 import { html } from '../../../app/js/lib/html.js';
+import { toHash } from '../../../app/js/ui/router.js';
 
 vi.mock('../../../app/js/ui/lib/share.js', async (orig) => ({
   ...(await orig()),
@@ -31,11 +32,11 @@ test('GymDetail lists machines and opens editor', async () => {
   render(html`<${GymDetail} gymId=${g.id} />`);
   expect(await screen.findByRole('heading', { name: 'Kamppi' })).toBeInTheDocument();
   await user.click(await screen.findByRole('button', { name: 'Leg Press — Technogym' }));
-  expect(location.hash).toBe(`#/gym/${g.id}/exercise/${ge.id}`);
+  expect(location.hash).toBe(toHash({ name: 'exercise', gymId: g.id, geId: ge.id }));
   expect(screen.getByRole('button', { name: 'Import machine files' })).toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Paste from Claude' })).toBeInTheDocument();
   await user.click(screen.getByRole('button', { name: 'Add manually' }));
-  expect(location.hash).toBe(`#/gym/${g.id}/exercise/new`);
+  expect(location.hash).toBe(toHash({ name: 'exercise', gymId: g.id, geId: 'new' }));
 });
 
 test('Hide here toggle removes free exercise from availableExercises', async () => {
@@ -60,7 +61,7 @@ test('tapping a free exercise name opens the editor for its override', async () 
   const g = await addGym('Kamppi');
   render(html`<${GymDetail} gymId=${g.id} />`);
   await user.click(await screen.findByRole('button', { name: 'Push-Up' }));
-  expect(location.hash).toBe(`#/gym/${g.id}/exercise/new?catalog=push-up`);
+  expect(location.hash).toBe(toHash({ name: 'exercise', gymId: g.id, geId: 'new', catalogId: 'push-up' }));
 });
 
 test('choosing a file through GymDetail opens the import sheet with its preview', async () => {

@@ -6,6 +6,7 @@ import { getOpenSession, startSession } from '../../../app/js/db/sessionRepo.js'
 import { updateSettings } from '../../../app/js/db/settingsRepo.js';
 import Home from '../../../app/js/ui/screens/Home.js';
 import { html } from '../../../app/js/lib/html.js';
+import { toHash } from '../../../app/js/ui/router.js';
 
 // skipSweep: Home's on-open sweep does nothing, so the resume query alone must reject timed-out sessions.
 const mocks = vi.hoisted(() => ({ skipSweep: false }));
@@ -38,7 +39,7 @@ test('tapping a gym starts a session and navigates to it', async () => {
   render(html`<${Home} />`);
   await userEvent.click(await screen.findByRole('button', { name: /^▶ Kamppi/ }));
   await vi.waitFor(async () => expect(await getOpenSession()).not.toBeNull());
-  expect(location.hash).toMatch(/^#\/session\//);
+  expect(location.hash).toBe(toHash({ name: 'session', sessionId: (await getOpenSession()).id }));
 });
 
 test('tapping the gym that has the open session resumes it instead of starting a second one', async () => {
@@ -46,7 +47,7 @@ test('tapping the gym that has the open session resumes it instead of starting a
   const s = await startSession(g.id, Date.now());
   render(html`<${Home} />`);
   await userEvent.click(await screen.findByRole('button', { name: /^▶ Kamppi/ }));
-  await vi.waitFor(() => expect(location.hash).toBe(`#/session/${s.id}`));
+  await vi.waitFor(() => expect(location.hash).toBe(toHash({ name: 'session', sessionId: s.id })));
   expect(await db.sessions.count()).toBe(1);
   expect((await db.sessions.get(s.id))?.endedAt).toBeNull();
 });
@@ -58,7 +59,7 @@ test('tapping a different gym finishes the open session and starts a new one', a
   render(html`<${Home} />`);
   await userEvent.click(await screen.findByRole('button', { name: /^▶ Otaniemi/ }));
   await vi.waitFor(async () => expect((await getOpenSession())?.gymId).toBe(other.id));
-  expect(location.hash).toBe(`#/session/${(await getOpenSession()).id}`);
+  expect(location.hash).toBe(toHash({ name: 'session', sessionId: (await getOpenSession()).id }));
   expect(await db.sessions.get(s.id)).toBeUndefined(); // it had no sets
 });
 
@@ -129,6 +130,6 @@ test('each gym button is split: the right half opens that gym’s program list',
   expect(programs).toHaveTextContent('Programs');
   expect(screen.getByRole('button', { name: 'Programs at Otaniemi' })).toBeInTheDocument();
   await userEvent.click(programs);
-  expect(location.hash).toBe(`#/programs/${g.id}`);
+  expect(location.hash).toBe(toHash({ name: 'programs', gymId: g.id }));
   expect(await db.sessions.count()).toBe(0); // the right half starts nothing
 });

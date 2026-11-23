@@ -6,6 +6,7 @@ import { shareOrDownload } from '../../../app/js/ui/lib/share.js';
 import Settings from '../../../app/js/ui/screens/Settings.js';
 import { html } from '../../../app/js/lib/html.js';
 import { askConfirm } from '../../../app/js/ui/lib/confirm.js';
+import { toHash } from '../../../app/js/ui/router.js';
 
 // The artifact asks with an in-page sheet (covered in confirm.test.js); here the answer is stubbed.
 vi.mock('../../../app/js/ui/lib/confirm.js', () => ({ askConfirm: vi.fn(), inPageConfirm: vi.fn() }));
@@ -318,7 +319,7 @@ test('Home button navigates home', async () => {
   location.hash = '#/settings';
   render(html`<${Settings} />`);
   await user.click(await screen.findByRole('button', { name: '‹ Home' }));
-  expect(location.hash).toBe('#/');
+  expect(location.hash).toBe(toHash({ name: 'home' }));
 });
 
 test('Load demo data adds the demo gyms; Remove demo data asks first and takes them away', async () => {

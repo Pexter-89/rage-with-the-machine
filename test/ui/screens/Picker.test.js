@@ -6,6 +6,7 @@ import { startSession } from '../../../app/js/db/sessionRepo.js';
 import { BUILT_IN_CATALOG } from '../../../app/js/domain/catalog.js';
 import Picker from '../../../app/js/ui/screens/Picker.js';
 import { html } from '../../../app/js/lib/html.js';
+import { toHash } from '../../../app/js/ui/router.js';
 
 const mocks = vi.hoisted(() => ({ override: null }));
 vi.mock('../../../app/js/db/catalogRepo.js', async (orig) => {
@@ -48,14 +49,14 @@ test('Picker item tap navigates to log route with item key', async () => {
   const { s, ge } = await seed();
   render(html`<${Picker} sessionId=${s.id} />`);
   await userEvent.click(await screen.findByRole('button', { name: /Leg Press/ }));
-  expect(location.hash).toBe(`#/session/${s.id}/log/${ge.id}`);
+  expect(location.hash).toBe(toHash({ name: 'log', sessionId: s.id, key: ge.id }));
 });
 
 test('Back returns to the session', async () => {
   const { s } = await seed();
   render(html`<${Picker} sessionId=${s.id} />`);
   await userEvent.click(await screen.findByRole('button', { name: '‹ Back' }));
-  expect(location.hash).toBe(`#/session/${s.id}`);
+  expect(location.hash).toBe(toHash({ name: 'session', sessionId: s.id }));
 });
 
 test('an ended session redirects home', async () => {
@@ -63,13 +64,13 @@ test('an ended session redirects home', async () => {
   await db.sessions.update(s.id, { endedAt: Date.now() });
   location.hash = `#/session/${s.id}/pick`;
   render(html`<${Picker} sessionId=${s.id} />`);
-  await vi.waitFor(() => expect(location.hash).toBe('#/'));
+  await vi.waitFor(() => expect(location.hash).toBe(toHash({ name: 'home' })));
 });
 
 test('a missing session redirects home', async () => {
   location.hash = '#/session/nope/pick';
   render(html`<${Picker} sessionId="nope" />`);
-  await vi.waitFor(() => expect(location.hash).toBe('#/'));
+  await vi.waitFor(() => expect(location.hash).toBe(toHash({ name: 'home' })));
 });
 
 test('Import machine from the picker navigates to the single created machine', async () => {
@@ -96,7 +97,7 @@ test('Import machine from the picker navigates to the single created machine', a
   await user.click(await screen.findByRole('button', { name: 'Import' }));
   await vi.waitFor(async () => expect(await db.gymExercises.where('gymId').equals(g.id).count()).toBe(2));
   const created = (await db.gymExercises.toArray()).find((e) => e.catalogId === 'hack-squat');
-  expect(location.hash).toBe(`#/session/${s.id}/log/${created.id}`);
+  expect(location.hash).toBe(toHash({ name: 'log', sessionId: s.id, key: created.id }));
 });
 
 test('category headers carry a body figure and exercises an equipment icon', async () => {

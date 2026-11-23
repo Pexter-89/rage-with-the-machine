@@ -7,6 +7,7 @@ import { formatDate } from '../../../app/js/domain/dates.js';
 import { ITEM_HEIGHT } from '../../../app/js/ui/components/Wheel.js';
 import Logging from '../../../app/js/ui/screens/Logging.js';
 import { html } from '../../../app/js/lib/html.js';
+import { toHash } from '../../../app/js/ui/router.js';
 
 // fail: the next repo write (addSet / updateSet / deleteSet) rejects with this error instead of running.
 const mocks = vi.hoisted(() => ({ fail: null }));
@@ -239,7 +240,7 @@ test('missing item navigates back to the session; ended session goes home', asyn
   const { s } = await seed();
   location.hash = `#/session/${s.id}/log/nope`;
   render(html`<${Logging} sessionId=${s.id} itemKey="nope" />`);
-  await vi.waitFor(() => expect(location.hash).toBe(`#/session/${s.id}`));
+  await vi.waitFor(() => expect(location.hash).toBe(toHash({ name: 'session', sessionId: s.id })));
 });
 
 test('ended session redirects home', async () => {
@@ -247,14 +248,14 @@ test('ended session redirects home', async () => {
   await db.sessions.update(s.id, { endedAt: Date.now() });
   location.hash = `#/session/${s.id}/log/${ge.id}`;
   render(html`<${Logging} sessionId=${s.id} itemKey=${ge.id} />`);
-  await vi.waitFor(() => expect(location.hash).toBe('#/'));
+  await vi.waitFor(() => expect(location.hash).toBe(toHash({ name: 'home' })));
 });
 
 test('Back returns to the session', async () => {
   const { s, ge } = await seed();
   render(html`<${Logging} sessionId=${s.id} itemKey=${ge.id} />`);
   await userEvent.click(await screen.findByRole('button', { name: '‹ Back to session' }));
-  expect(location.hash).toBe(`#/session/${s.id}`);
+  expect(location.hash).toBe(toHash({ name: 'session', sessionId: s.id }));
 });
 
 function scrollTo(scroller, row) {
@@ -345,7 +346,7 @@ test('Complete set into a session that has just ended navigates home', async () 
   render(html`<${Logging} sessionId=${s.id} itemKey=${ge.id} />`);
   mocks.fail = () => new SessionEndedError(s.id);
   await userEvent.click(await screen.findByRole('button', { name: 'Complete set' }));
-  await vi.waitFor(() => expect(location.hash).toBe('#/'));
+  await vi.waitFor(() => expect(location.hash).toBe(toHash({ name: 'home' })));
 });
 
 test('a failed Save or Delete in the edit sheet shows an inline error and keeps the sheet open', async () => {
@@ -372,7 +373,7 @@ test('Save in the edit sheet after the session ended navigates home', async () =
   await userEvent.click(await screen.findByRole('button', { name: '1 60 kg × 10' }));
   mocks.fail = () => new SessionEndedError(s.id);
   await userEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Save' }));
-  await vi.waitFor(() => expect(location.hash).toBe('#/'));
+  await vi.waitFor(() => expect(location.hash).toBe(toHash({ name: 'home' })));
 });
 
 test('the ✕ on a done set deletes it after confirming', async () => {

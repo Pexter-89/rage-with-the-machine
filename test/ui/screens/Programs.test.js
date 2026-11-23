@@ -6,6 +6,7 @@ import { addProgram } from '../../../app/js/db/programRepo.js';
 import { getOpenSession } from '../../../app/js/db/sessionRepo.js';
 import Programs from '../../../app/js/ui/screens/Programs.js';
 import { html } from '../../../app/js/lib/html.js';
+import { toHash } from '../../../app/js/ui/router.js';
 
 beforeEach(async () => {
   await resetDb();
@@ -70,7 +71,7 @@ test('archived programs are not listed; with none there is a hint and New progra
   render(html`<${Programs} gymId=${g.id} />`);
   expect(await screen.findByText(/No programs yet/)).toBeInTheDocument();
   await userEvent.click(screen.getByRole('button', { name: /New program/ }));
-  expect(location.hash).toBe(`#/programs/${g.id}/new`);
+  expect(location.hash).toBe(toHash({ name: 'program', gymId: g.id, programId: 'new' }));
 });
 
 test('tapping a program starts a session from it at this gym', async () => {
@@ -80,7 +81,7 @@ test('tapping a program starts a session from it at this gym', async () => {
   await vi.waitFor(async () => expect(await getOpenSession()).not.toBeNull());
   const s = await getOpenSession();
   expect(s).toMatchObject({ gymId: g.id, programId: legs.id, plan: legs.items });
-  expect(location.hash).toBe(`#/session/${s.id}`);
+  expect(location.hash).toBe(toHash({ name: 'session', sessionId: s.id }));
 });
 
 test('up/down reorder the list; Edit opens the editor', async () => {
@@ -93,5 +94,5 @@ test('up/down reorder the list; Edit opens the editor', async () => {
   await user.click(screen.getByRole('button', { name: 'Move Pull up' }));
   await vi.waitFor(() => expect(rowNames()).toEqual(['Start Pull', 'Start Legs']));
   await user.click(screen.getByRole('button', { name: 'Edit Pull' }));
-  expect(location.hash).toBe(`#/programs/${g.id}/${pull.id}`);
+  expect(location.hash).toBe(toHash({ name: 'program', gymId: g.id, programId: pull.id }));
 });

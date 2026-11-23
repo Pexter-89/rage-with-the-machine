@@ -4,6 +4,7 @@ import { addGym, listGyms } from '../../../app/js/db/gymRepo.js';
 import { db, resetDb } from '../../../app/js/db/db.js';
 import Gyms from '../../../app/js/ui/screens/Gyms.js';
 import { html } from '../../../app/js/lib/html.js';
+import { toHash } from '../../../app/js/ui/router.js';
 
 beforeEach(async () => {
   await resetDb();
@@ -69,5 +70,5 @@ test('Import gym from file creates the gym with its equipment and opens it', asy
   await vi.waitFor(async () => expect((await listGyms()).map((x) => x.name)).toEqual(['Shared gym']));
   const gym = (await listGyms())[0];
   expect(await db.gymExercises.where('gymId').equals(gym.id).count()).toBe(1);
-  await vi.waitFor(() => expect(location.hash).toBe(`#/gym/${gym.id}`));
+  await vi.waitFor(() => expect(location.hash).toBe(toHash({ name: 'gym', gymId: gym.id })));
 });

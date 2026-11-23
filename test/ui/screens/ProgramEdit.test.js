@@ -5,6 +5,7 @@ import { addGym, saveGymExercise } from '../../../app/js/db/gymRepo.js';
 import { addProgram, getProgram, listPrograms } from '../../../app/js/db/programRepo.js';
 import ProgramEdit from '../../../app/js/ui/screens/ProgramEdit.js';
 import { html } from '../../../app/js/lib/html.js';
+import { toHash } from '../../../app/js/ui/router.js';
 
 beforeEach(async () => {
   await resetDb();
@@ -42,7 +43,7 @@ test('creates a program: name, exercises from the whole catalogue, sets × reps,
   expect(screen.getByRole('button', { name: 'Move Pull-Up up' })).toBeDisabled();
 
   await user.click(screen.getByRole('button', { name: 'Save program' }));
-  await vi.waitFor(() => expect(location.hash).toBe(`#/programs/${g.id}`));
+  await vi.waitFor(() => expect(location.hash).toBe(toHash({ name: 'programs', gymId: g.id })));
   const [p] = await listPrograms();
   expect(p).toMatchObject({
     name: 'Upper',
@@ -98,7 +99,7 @@ test('edits an existing program: steppers stop at their limits, remove, rename',
   await user.clear(screen.getByLabelText('Program name'));
   await user.type(screen.getByLabelText('Program name'), 'Legs 2');
   await user.click(screen.getByRole('button', { name: 'Save program' }));
-  await vi.waitFor(() => expect(location.hash).toBe(`#/programs/${g.id}`));
+  await vi.waitFor(() => expect(location.hash).toBe(toHash({ name: 'programs', gymId: g.id })));
   expect(await getProgram(p.id)).toMatchObject({ name: 'Legs 2', items: [{ catalogId: 'leg-press', sets: 1, reps: 50 }] });
 });
 
@@ -115,11 +116,11 @@ test('Delete program asks in the in-page sheet, then deletes', async () => {
   await user.click(screen.getByRole('button', { name: 'Delete program' }));
   await user.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Delete' }));
   await vi.waitFor(async () => expect(await getProgram(p.id)).toBeUndefined());
-  expect(location.hash).toBe(`#/programs/${g.id}`);
+  expect(location.hash).toBe(toHash({ name: 'programs', gymId: g.id }));
 });
 
 test('a program that does not exist goes back to the list', async () => {
   const g = await addGym('Kamppi');
   render(html`<${ProgramEdit} gymId=${g.id} programId="gone" />`);
-  await vi.waitFor(() => expect(location.hash).toBe(`#/programs/${g.id}`));
+  await vi.waitFor(() => expect(location.hash).toBe(toHash({ name: 'programs', gymId: g.id })));
 });
